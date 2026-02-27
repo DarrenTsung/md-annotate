@@ -3,7 +3,7 @@
 # Usage: ./scripts/wait-for-session.sh <uuid> <grep-pattern> [timeout_seconds]
 #
 # Polls every second. Exits 0 on match, 1 on timeout.
-# Max timeout is 60 seconds.
+# Max timeout is 5 seconds — if you need longer, call in a loop.
 # Prints the matched line(s) to stdout.
 
 SESSION_UUID="$1"
@@ -15,9 +15,9 @@ if [[ -z "$SESSION_UUID" || -z "$PATTERN" ]]; then
   exit 1
 fi
 
-# Cap at 60 seconds
-if [[ $TIMEOUT -gt 60 ]]; then
-  TIMEOUT=60
+# Cap at 5 seconds
+if [[ $TIMEOUT -gt 5 ]]; then
+  TIMEOUT=5
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

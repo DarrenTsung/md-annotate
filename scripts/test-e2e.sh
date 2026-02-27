@@ -17,6 +17,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 MD_FILE="$(cd "$PROJECT_DIR" && realpath "${1:-test.md}")"
 
+# Helper: call wait-for-session in a loop (it caps at 5s per call)
+wait_loop() {
+  local uuid="$1" pattern="$2" max_attempts="${3:-6}"
+  for i in $(seq 1 "$max_attempts"); do
+    if "$SCRIPT_DIR/wait-for-session.sh" "$uuid" "$pattern" 5 >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  echo "Timed out after $((max_attempts * 5))s waiting for: $pattern" >&2
+  return 1
+}
+
 # 1. Start the daemon if not already running
 if ! curl -s http://localhost:3456/api/claude/status >/dev/null 2>&1; then
   echo "Starting md-annotate daemon..." >&2
@@ -55,8 +67,8 @@ sleep 1
 "$SCRIPT_DIR/send-to-session.sh" "$NEW_UUID" "claude"
 echo "Waiting for Claude to start..." >&2
 
-# 4. Wait for Claude to be ready
-"$SCRIPT_DIR/wait-for-session.sh" "$NEW_UUID" "for shortcuts" 30 >/dev/null
+# 4. Wait for Claude to be ready (loop since it may take a few seconds)
+wait_loop "$NEW_UUID" "for shortcuts" 6
 echo "Claude is ready" >&2
 
 # 5. Invoke the md-annotate skill with absolute path
@@ -64,7 +76,7 @@ echo "Claude is ready" >&2
 echo "Sent /md-annotate $MD_FILE" >&2
 
 # 6. Wait for Claude to acknowledge (it prints a watching message)
-"$SCRIPT_DIR/wait-for-session.sh" "$NEW_UUID" "watching for" 30 >/dev/null
+wait_loop "$NEW_UUID" "watching for" 6
 echo "Claude is watching for annotations" >&2
 
 # Print UUID to stdout for the caller
