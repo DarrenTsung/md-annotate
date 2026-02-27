@@ -1,29 +1,26 @@
 #!/bin/bash
-# Force-close an iTerm session by UUID.
-# Sends Ctrl+C to interrupt any running process, then Ctrl+D to exit the shell.
-# Usage: ./scripts/close-session.sh <uuid>
+# Read the visible contents of an iTerm session by UUID.
+# Output is stripped of ANSI escape sequences for clean text.
+# Usage: ./scripts/read-session.sh <uuid>
 
 SESSION_UUID="$1"
 
 if [[ -z "$SESSION_UUID" ]]; then
-  echo "Usage: close-session.sh <uuid>" >&2
+  echo "Usage: read-session.sh <uuid>" >&2
   exit 1
 fi
 
-osascript <<EOF 2>/dev/null
+osascript <<EOF | sed $'s/\x1b\[[0-9;]*[a-zA-Z]//g' | strings
 tell application "iTerm"
     repeat with aWindow in windows
         tell aWindow
             repeat with aTab in tabs
                 tell aTab
-                    repeat with aSession in sessions of aTab
+                    repeat with aSession in sessions
                         if unique ID of aSession is "$SESSION_UUID" then
                             tell aSession
-                                write text (ASCII character 3) newline NO
-                                delay 0.3
-                                write text (ASCII character 4) newline NO
+                                return contents
                             end tell
-                            return
                         end if
                     end repeat
                 end tell

@@ -1,11 +1,39 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useAnnotations } from './hooks/useAnnotations.js';
 import { Toolbar } from './components/Toolbar.js';
 import { MarkdownViewer } from './components/MarkdownViewer.js';
 import { CommentSidebar } from './components/CommentSidebar.js';
 import type { SourceOffset } from './lib/offsets.js';
 
+function LandingPage() {
+  return (
+    <div className="landing">
+      <h1>md-annotate</h1>
+      <p>
+        Open a file by navigating to:
+        <br />
+        <code>http://localhost:3456?file=/path/to/file.md</code>
+      </p>
+      <p className="landing-hint">
+        Or use the <code>/md-annotate</code> skill from Claude Code.
+      </p>
+    </div>
+  );
+}
+
 export default function App() {
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const filePath = params.get('file');
+  const session = params.get('session');
+
+  if (!filePath) {
+    return <LandingPage />;
+  }
+
+  return <AnnotationView filePath={filePath} session={session} />;
+}
+
+function AnnotationView({ filePath, session }: { filePath: string; session: string | null }) {
   const {
     annotations,
     fileData,
@@ -17,7 +45,7 @@ export default function App() {
     addComment,
     activeAnnotationId,
     setActiveAnnotationId,
-  } = useAnnotations();
+  } = useAnnotations({ filePath, session });
 
   const handleCreateAnnotation = useCallback(
     async (offset: SourceOffset, comment: string) => {
@@ -37,7 +65,6 @@ export default function App() {
   const handleHighlightClick = useCallback(
     (annotationId: string) => {
       setActiveAnnotationId(annotationId);
-      // Scroll sidebar thread into view
       const thread = document.querySelector(
         `.comment-thread[data-annotation-id="${annotationId}"]`
       );
@@ -56,7 +83,7 @@ export default function App() {
   }
 
   if (!fileData) {
-    return <div className="error">Failed to load file</div>;
+    return <div className="error">Failed to load file: {filePath}</div>;
   }
 
   return (

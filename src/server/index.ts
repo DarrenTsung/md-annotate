@@ -1,42 +1,22 @@
 import express from 'express';
 import { createServer } from 'http';
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 import fs from 'fs';
 import path from 'path';
-import { watch } from 'chokidar';
-import open from 'open';
 
-import { renderMarkdown } from './services/markdown.js';
-import { AnnotationService } from './services/annotations.js';
-import { ItermBridge } from './services/iterm-bridge.js';
+import { FileManager } from './services/file-manager.js';
 import { createApiRouter } from './routes/api.js';
-import type { WsMessage } from '../shared/types.js';
+import type { WsClientMessage } from '../shared/types.js';
 
 interface ServerOptions {
-  filePath: string;
   port: number;
   noOpen: boolean;
-  itermSessionId: string | null;
 }
 
 export function startServer(options: ServerOptions): void {
-  const { filePath, port, noOpen, itermSessionId } = options;
+  const { port, noOpen } = options;
 
-  // State
-  let rawMarkdown = fs.readFileSync(filePath, 'utf-8');
-  let renderedHtml = renderMarkdown(rawMarkdown);
-
-  // Services
-  const annotationService = new AnnotationService(filePath);
-  const itermBridge = new ItermBridge(
-    itermSessionId,
-    filePath,
-    annotationService.getSidecarPath(),
-    (ids) => {
-      annotationService.markSentToClaude(ids);
-      broadcastAnnotations();
-    }
-  );
+  const fileManager = new FileManager();
 
   // Express
   const app = express();
@@ -54,92 +34,32 @@ export function startServer(options: ServerOptions): void {
   }
 
   // API routes
-  app.use(
-    '/api',
-    createApiRouter(annotationService, itermBridge, () => ({
-      rawMarkdown,
-      renderedHtml,
-      filePath,
-    }))
-  );
+  app.use('/api', createApiRouter(fileManager));
 
-  // WebSocket
+  // WebSocket — clients subscribe to specific files
   const wss = new WebSocketServer({ server, path: '/ws' });
-  const clients = new Set<WebSocket>();
 
   wss.on('connection', (ws) => {
-    clients.add(ws);
-    const msg: WsMessage = { type: 'connected' };
-    ws.send(JSON.stringify(msg));
-    ws.on('close', () => clients.delete(ws));
-  });
+    ws.send(JSON.stringify({ type: 'connected' }));
 
-  function broadcast(msg: WsMessage): void {
-    const data = JSON.stringify(msg);
-    for (const client of clients) {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(data);
-      }
-    }
-  }
-
-  function broadcastAnnotations(): void {
-    broadcast({
-      type: 'annotations-changed',
-      annotations: annotationService.getAll(),
-    });
-  }
-
-  // Watch the markdown file for external changes
-  const mdWatcher = watch(filePath, {
-    persistent: true,
-    awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
-  });
-
-  mdWatcher.on('change', () => {
-    console.log('Markdown file changed, reloading...');
-    rawMarkdown = fs.readFileSync(filePath, 'utf-8');
-    renderedHtml = renderMarkdown(rawMarkdown);
-
-    // Re-anchor annotations
-    const { annotations, changed } = annotationService.reanchor(rawMarkdown);
-
-    broadcast({ type: 'file-changed', rawMarkdown, renderedHtml });
-    if (changed) {
-      broadcast({ type: 'annotations-changed', annotations });
-    }
-  });
-
-  // Watch the sidecar file for external changes (e.g., Claude editing it)
-  const sidecarPath = annotationService.getSidecarPath();
-  let sidecarWriteTimeout: ReturnType<typeof setTimeout> | null = null;
-  let lastSidecarContent = '';
-
-  const sidecarWatcher = watch(sidecarPath, {
-    persistent: true,
-    ignoreInitial: true,
-    awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 100 },
-  });
-
-  sidecarWatcher.on('change', () => {
-    // Debounce to avoid reading partial writes
-    if (sidecarWriteTimeout) clearTimeout(sidecarWriteTimeout);
-    sidecarWriteTimeout = setTimeout(() => {
+    ws.on('message', (data) => {
       try {
-        const content = fs.readFileSync(sidecarPath, 'utf-8');
-        if (content === lastSidecarContent) return;
-        lastSidecarContent = content;
-        console.log('Sidecar file changed externally, pushing update...');
-        broadcastAnnotations();
+        const msg = JSON.parse(String(data)) as WsClientMessage;
+        if (msg.type === 'subscribe' && msg.filePath) {
+          fileManager.subscribe(msg.filePath, ws, msg.session);
+          console.log(
+            `[WS] Client subscribed to ${msg.filePath}` +
+              (msg.session ? ` (session ${msg.session.slice(0, 16)}...)` : '')
+          );
+        }
       } catch {
-        // File might be mid-write
+        // Ignore malformed messages
       }
-    }, 100);
-  });
+    });
 
-  sidecarWatcher.on('add', () => {
-    console.log('Sidecar file created, pushing update...');
-    broadcastAnnotations();
+    ws.on('close', () => {
+      fileManager.unsubscribe(ws);
+    });
   });
 
   // Serve index.html for SPA routes (production only)
@@ -151,19 +71,14 @@ export function startServer(options: ServerOptions): void {
 
   server.listen(port, () => {
     const url = `http://localhost:${port}`;
-    console.log(`md-annotate server running at ${url}`);
-    console.log(`Watching: ${filePath}`);
-
-    if (!noOpen) {
-      open(url);
-    }
+    console.log(`md-annotate daemon running at ${url}`);
+    console.log('Waiting for file connections...');
   });
 
   // Graceful shutdown
   process.on('SIGINT', () => {
     console.log('\nShutting down...');
-    mdWatcher.close();
-    sidecarWatcher.close();
+    fileManager.shutdown();
     wss.close();
     server.close();
     process.exit(0);

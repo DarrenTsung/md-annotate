@@ -4,7 +4,7 @@
   "description": "Google Docs-style annotation tool for markdown files with Claude Code integration",
   "type": "module",
   "bin": {
-    "md-annotate": "./bin/md-annotate.ts"
+    "md-annotate": "./bin/md-annotate"
   },
   "scripts": {
     "dev": "concurrently --names server,client \"tsx watch bin/md-annotate.ts\" \"vite\"",

@@ -23,31 +23,61 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export const api = {
-  getFile: () => request<FileResponse>('/file'),
+function fileQuery(filePath: string, extra?: Record<string, string>): string {
+  const params = new URLSearchParams({ filePath });
+  if (extra) {
+    for (const [k, v] of Object.entries(extra)) {
+      if (v) params.set(k, v);
+    }
+  }
+  return params.toString();
+}
 
-  getAnnotations: () => request<Annotation[]>('/annotations'),
+export function createApi(filePath: string, session: string | null) {
+  return {
+    getFile: () =>
+      request<FileResponse>(`/file?${fileQuery(filePath)}`),
 
-  createAnnotation: (data: CreateAnnotationRequest) =>
-    request<Annotation>('/annotations', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+    getAnnotations: () =>
+      request<Annotation[]>(`/annotations?${fileQuery(filePath)}`),
 
-  updateAnnotation: (id: string, data: UpdateAnnotationRequest) =>
-    request<Annotation>(`/annotations/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
+    createAnnotation: (data: CreateAnnotationRequest) =>
+      request<Annotation>(
+        `/annotations?${fileQuery(filePath, session ? { session } : undefined)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }
+      ),
 
-  deleteAnnotation: (id: string) =>
-    request<void>(`/annotations/${id}`, { method: 'DELETE' }),
+    updateAnnotation: (id: string, data: UpdateAnnotationRequest) =>
+      request<Annotation>(
+        `/annotations/${id}?${fileQuery(filePath)}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        }
+      ),
 
-  addComment: (annotationId: string, data: AddCommentRequest) =>
-    request<Comment>(`/annotations/${annotationId}/comments`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+    deleteAnnotation: (id: string) =>
+      request<void>(`/annotations/${id}?${fileQuery(filePath)}`, {
+        method: 'DELETE',
+      }),
 
-  getClaudeStatus: () => request<ClaudeStatusResponse>('/claude/status'),
-};
+    addComment: (annotationId: string, data: AddCommentRequest) =>
+      request<Comment>(
+        `/annotations/${annotationId}/comments?${fileQuery(filePath)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }
+      ),
+
+    getClaudeStatus: () =>
+      request<ClaudeStatusResponse>(
+        `/claude/status?${session ? `session=${encodeURIComponent(session)}` : ''}`
+      ),
+  };
+}
+
+export type Api = ReturnType<typeof createApi>;

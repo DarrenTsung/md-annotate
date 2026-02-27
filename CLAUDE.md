@@ -4,17 +4,23 @@ Google Docs-style inline annotation tool for markdown files with Claude Code int
 
 ## Architecture
 
-- **Server**: Express + WebSocket on port 3456. Renders markdown with `markdown-it` (custom source offset plugin), manages annotation sidecar JSON (`file.md.annotations.json`), watches both files with `chokidar`.
-- **Client**: React + Vite on port 5174 (dev). Text selection → source offset mapping → annotation creation. Highlights via `<mark>` injection. Comment sidebar with threads.
-- **Claude integration**: Inherits `ITERM_SESSION_ID` from the terminal that launched it. Auto-sends new annotations to that iTerm session via AppleScript after a 2.5s debounce. Claude responds by editing the sidecar JSON directly; file watcher pushes updates to browser via WebSocket.
+- **Daemon**: A single global Express + WebSocket server on port 3456 that handles any file. Start with `md-annotate` (no args). Per-file state (watchers, annotations, markdown cache) is created lazily when a client connects.
+- **URL-driven routing**: Clients open `http://localhost:3456?file=/path/to/file.md&session=ITERM_SESSION_ID`. The server associates the iTerm session with that file for annotation routing.
+- **FileManager**: Central service managing `Map<filePath, FileState>`. Each `FileState` holds markdown/HTML caches, `AnnotationService`, chokidar watchers, connected WebSocket clients, and associated iTerm sessions. Cleans up after last client disconnects.
+- **Client**: React + Vite on port 5174 (dev). Reads `file` and `session` from URL search params. Text selection → source offset mapping → annotation creation. Highlights via `<mark>` injection. Comment sidebar with threads.
+- **Claude integration**: When annotations are created, they're sent to all iTerm sessions watching that file via AppleScript (per-session debounce queues). Claude responds by editing the sidecar JSON directly; file watcher pushes updates to subscribed browser clients via WebSocket.
 
 ## Key files
 
-- `bin/md-annotate.ts` — CLI entry point
-- `src/server/index.ts` — Express + WebSocket + file watchers
-- `src/server/services/iterm-bridge.ts` — AppleScript integration
+- `bin/md-annotate.ts` — CLI entry point (daemon mode or open-file mode)
+- `src/server/index.ts` — Express + WebSocket server setup
+- `src/server/services/file-manager.ts` — Per-file state management (watchers, caches, client sets)
+- `src/server/services/iterm-bridge.ts` — Multi-session AppleScript integration
 - `src/server/services/annotations.ts` — Sidecar CRUD + re-anchoring
 - `src/server/services/markdown.ts` — markdown-it with source offset plugin
+- `src/server/routes/api.ts` — REST API (all routes accept `filePath` query param)
+- `src/client/src/hooks/useAnnotations.ts` — Data fetching + WebSocket subscription (file-scoped)
+- `src/client/src/lib/api.ts` — API client (parameterized by filePath + session)
 - `src/client/src/hooks/useTextSelection.ts` — Selection API → source offset
 - `src/client/src/lib/offsets.ts` — Fuzzy matching selected text to raw markdown
 - `src/client/src/lib/highlight.ts` — Inject `<mark>` elements into rendered HTML
@@ -22,16 +28,22 @@ Google Docs-style inline annotation tool for markdown files with Claude Code int
 ## Running
 
 ```bash
-# Dev (server + Vite HMR)
-npm run dev -- test.md
+# Start the daemon (no file arg needed)
+md-annotate
 
-# Or directly
-npx concurrently --names server,client \
-  "npx tsx watch bin/md-annotate.ts test.md --no-open --port 3456" \
-  "npx vite"
+# Or start daemon and open a file
+md-annotate test.md
+
+# Dev (server + Vite HMR)
+npm run dev
+# Then open http://localhost:5174?file=/path/to/test.md
 ```
 
 Dev client: http://localhost:5174 (proxies `/api` and `/ws` to Express on 3456).
+
+## Using with Claude Code
+
+The `/md-annotate` skill constructs a URL with the file path and `$ITERM_SESSION_ID`, opens the browser, and waits for annotation messages. The daemon must be running first.
 
 ## Testing
 
@@ -48,18 +60,15 @@ These use AppleScript to manage iTerm sessions for testing the Claude integratio
 
 Typical test workflow:
 ```bash
-# 1. Spawn a separate Claude session running md-annotate
+# 1. Start daemon if not already running
+md-annotate &
+
+# 2. Open annotation UI for a file
+open "http://localhost:3456?file=$(pwd)/test.md&session=$ITERM_SESSION_ID"
+
+# 3. Or use E2E test scripts for a separate Claude session
 SESSION=$(./scripts/test-e2e.sh)
-
-# 2. Wait for servers to start, then test with Playwright
-playwright-cli open http://localhost:5174
-# ... interact with the UI, create annotations ...
-
-# 3. Annotations auto-send to the spawned Claude session via AppleScript
-#    Claude edits the sidecar JSON, changes push to browser via WebSocket
 
 # 4. Cleanup
 ./scripts/close-session.sh "$SESSION"
 ```
-
-**Important**: Do NOT run md-annotate from the same session you're developing in. The AppleScript bridge sends annotation text as input to the inherited `ITERM_SESSION_ID`, which would interfere with your current work. Always use a separate session (via the test scripts or a manual split).

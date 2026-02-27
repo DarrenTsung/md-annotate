@@ -1,11 +1,16 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type {
   Annotation,
   CreateAnnotationRequest,
   FileResponse,
   WsMessage,
 } from '@shared/types.js';
-import { api } from '../lib/api.js';
+import { createApi } from '../lib/api.js';
+
+interface UseAnnotationsOptions {
+  filePath: string;
+  session: string | null;
+}
 
 interface UseAnnotationsResult {
   annotations: Annotation[];
@@ -20,13 +25,15 @@ interface UseAnnotationsResult {
   setActiveAnnotationId: (id: string | null) => void;
 }
 
-export function useAnnotations(): UseAnnotationsResult {
+export function useAnnotations({ filePath, session }: UseAnnotationsOptions): UseAnnotationsResult {
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [fileData, setFileData] = useState<FileResponse | null>(null);
   const [claudeConnected, setClaudeConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
+  const api = useMemo(() => createApi(filePath, session), [filePath, session]);
 
   // Initial data fetch
   useEffect(() => {
@@ -47,32 +54,45 @@ export function useAnnotations(): UseAnnotationsResult {
       }
     }
     load();
-  }, []);
+  }, [api]);
 
-  // WebSocket connection
+  // WebSocket connection — subscribe to the specific file
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
+    ws.onopen = () => {
+      // Subscribe to this file's updates
+      ws.send(JSON.stringify({
+        type: 'subscribe',
+        filePath,
+        session: session || undefined,
+      }));
+    };
+
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data) as WsMessage;
         switch (msg.type) {
           case 'file-changed':
-            setFileData((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    rawMarkdown: msg.rawMarkdown,
-                    renderedHtml: msg.renderedHtml,
-                  }
-                : null
-            );
+            if (msg.filePath === filePath) {
+              setFileData((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      rawMarkdown: msg.rawMarkdown,
+                      renderedHtml: msg.renderedHtml,
+                    }
+                  : null
+              );
+            }
             break;
           case 'annotations-changed':
-            setAnnotations(msg.annotations);
+            if (msg.filePath === filePath) {
+              setAnnotations(msg.annotations);
+            }
             break;
           case 'connected':
             console.log('WebSocket connected');
@@ -93,7 +113,7 @@ export function useAnnotations(): UseAnnotationsResult {
     return () => {
       ws.close();
     };
-  }, []);
+  }, [filePath, session]);
 
   const createAnnotation = useCallback(
     async (req: CreateAnnotationRequest): Promise<Annotation> => {
@@ -101,7 +121,7 @@ export function useAnnotations(): UseAnnotationsResult {
       setAnnotations((prev) => [...prev, annotation]);
       return annotation;
     },
-    []
+    [api]
   );
 
   const updateAnnotation = useCallback(
@@ -111,14 +131,14 @@ export function useAnnotations(): UseAnnotationsResult {
         prev.map((a) => (a.id === id ? updated : a))
       );
     },
-    []
+    [api]
   );
 
   const deleteAnnotation = useCallback(async (id: string): Promise<void> => {
     await api.deleteAnnotation(id);
     setAnnotations((prev) => prev.filter((a) => a.id !== id));
     setActiveAnnotationId((prev) => (prev === id ? null : prev));
-  }, []);
+  }, [api]);
 
   const addComment = useCallback(
     async (annotationId: string, text: string): Promise<void> => {
@@ -126,7 +146,7 @@ export function useAnnotations(): UseAnnotationsResult {
       const anns = await api.getAnnotations();
       setAnnotations(anns);
     },
-    []
+    [api]
   );
 
   return {

@@ -16,7 +16,9 @@ tell application \"iTerm\"
                 tell aTab
                     repeat with aSession in sessions
                         if unique ID of aSession is \"$UUID\" then
-                            set newSession to (split vertically with default profile)
+                            tell aSession
+                                set newSession to (split vertically with default profile)
+                            end tell
                             return unique ID of newSession
                         end if
                     end repeat

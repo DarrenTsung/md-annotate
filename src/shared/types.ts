@@ -53,12 +53,17 @@ export interface FileResponse {
 
 export interface ClaudeStatusResponse {
   connected: boolean;
-  sessionId: string | null;
+  session: string | null;
 }
 
 // WebSocket message types
 
+// Server -> Client
 export type WsMessage =
-  | { type: 'file-changed'; rawMarkdown: string; renderedHtml: string }
-  | { type: 'annotations-changed'; annotations: Annotation[] }
+  | { type: 'file-changed'; filePath: string; rawMarkdown: string; renderedHtml: string }
+  | { type: 'annotations-changed'; filePath: string; annotations: Annotation[] }
   | { type: 'connected' };
+
+// Client -> Server
+export type WsClientMessage =
+  | { type: 'subscribe'; filePath: string; session?: string };
