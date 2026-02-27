@@ -39,15 +39,14 @@ export function SelectionPopover({
     }
   }
 
-  // Position the popover below the selection
-  const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
-  const top = rect.bottom + scrollTop + 8;
-  const left = Math.max(16, rect.left);
+  // Position the popover below the selection, clamped to viewport
+  const top = Math.min(rect.bottom + 8, window.innerHeight - 220);
+  const left = Math.max(16, Math.min(rect.left, window.innerWidth - 336));
 
   return (
     <div
       className="selection-popover"
-      style={{ top, left, position: 'absolute' }}
+      style={{ top, left, position: 'fixed' }}
     >
       <div className="popover-selected-text" title={selectedText}>
         "{selectedText.length > 50 ? selectedText.slice(0, 47) + '...' : selectedText}"

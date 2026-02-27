@@ -31,10 +31,41 @@ export function applyHighlights(
     })
   );
 
+  return applyHighlightRanges(container, ranges);
+}
+
+/**
+ * Inject <mark> elements for a pending text selection.
+ * Uses a distinct CSS class so it can be styled differently.
+ */
+export function applyPendingHighlight(
+  container: HTMLElement,
+  startOffset: number,
+  endOffset: number
+): () => void {
+  return applyHighlightRanges(container, [
+    {
+      annotationId: '__pending__',
+      startOffset,
+      endOffset,
+      status: 'pending' as 'open',
+      className: 'pending-highlight',
+    },
+  ]);
+}
+
+interface HighlightRangeWithClass extends HighlightRange {
+  className?: string;
+}
+
+function applyHighlightRanges(
+  container: HTMLElement,
+  ranges: HighlightRangeWithClass[]
+): () => void {
   // Sort by start offset
   ranges.sort((a, b) => a.startOffset - b.startOffset);
 
-  // For each annotation, find the block element(s) that contain it and
+  // For each range, find the block element(s) that contain it and
   // wrap the matching text in <mark> elements
   const marks: HTMLElement[] = [];
 
@@ -49,7 +80,7 @@ export function applyHighlights(
         10
       );
 
-      // Check if this annotation overlaps with this block
+      // Check if this range overlaps with this block
       if (range.startOffset >= blockEnd || range.endOffset <= blockStart) {
         continue;
       }
@@ -73,7 +104,7 @@ export function applyHighlights(
 
 function highlightTextInElement(
   element: HTMLElement,
-  range: HighlightRange,
+  range: HighlightRangeWithClass,
   blockStartOffset: number,
   marks: HTMLElement[]
 ): void {
@@ -114,7 +145,7 @@ function highlightTextInElement(
 
     const mark = document.createElement('mark');
     mark.setAttribute('data-annotation-id', range.annotationId);
-    mark.className = `annotation-highlight ${range.status === 'resolved' ? 'resolved' : ''}`;
+    mark.className = range.className ?? `annotation-highlight ${range.status === 'resolved' ? 'resolved' : ''}`;
     mark.textContent = middle;
     marks.push(mark);
 

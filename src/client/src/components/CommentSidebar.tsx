@@ -48,7 +48,7 @@ export function CommentSidebar({
             key={annotation.id}
             annotation={annotation}
             isActive={activeAnnotationId === annotation.id}
-            onActivate={() => onSetActive(annotation.id)}
+            onActivate={() => onSetActive(activeAnnotationId === annotation.id ? null : annotation.id)}
             onReply={(text) => onReply(annotation.id, text)}
             onResolve={() => onResolve(annotation.id)}
             onReopen={() => onReopen(annotation.id)}
@@ -66,7 +66,7 @@ export function CommentSidebar({
                 key={annotation.id}
                 annotation={annotation}
                 isActive={activeAnnotationId === annotation.id}
-                onActivate={() => onSetActive(annotation.id)}
+                onActivate={() => onSetActive(activeAnnotationId === annotation.id ? null : annotation.id)}
                 onReply={(text) => onReply(annotation.id, text)}
                 onResolve={() => onResolve(annotation.id)}
                 onReopen={() => onReopen(annotation.id)}

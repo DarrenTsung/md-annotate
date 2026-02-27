@@ -94,6 +94,7 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
           renderedHtml={fileData.renderedHtml}
           rawMarkdown={fileData.rawMarkdown}
           annotations={annotations}
+          activeAnnotationId={activeAnnotationId}
           onCreateAnnotation={handleCreateAnnotation}
           onHighlightClick={handleHighlightClick}
         />

@@ -1,6 +1,6 @@
 # Test Document
 
-This is a test markdown file for e2e testing.
+This is a test markdown file for end-to-end (e2e) testing. It serves as a fixture for Playwright browser tests that verify the full annotation workflow, including text selection, comment creation, and highlight rendering.
 
 ## Section One
 
