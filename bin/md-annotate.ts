@@ -6,12 +6,97 @@ import open from 'open';
 import { startServer } from '../src/server/index.js';
 
 const args = process.argv.slice(2);
+const PORT = 3456;
+
+// --- Subcommands: reply, resolve (lightweight CLI clients) ---
+
+async function cliReply(): Promise<void> {
+  const subArgs = args.slice(1); // after "reply"
+  const resolve = subArgs.includes('--resolve');
+  const positional = subArgs.filter((a) => a !== '--resolve');
+
+  if (positional.length < 2) {
+    console.error('Usage: md-annotate reply [--resolve] <annotation-id> "text"');
+    process.exit(1);
+  }
+
+  const [annotationId, ...textParts] = positional;
+  const text = textParts.join(' ');
+  const session = process.env.ITERM_SESSION_ID;
+  if (!session) {
+    console.error('Error: $ITERM_SESSION_ID is not set');
+    process.exit(1);
+  }
+
+  const url = `http://localhost:${PORT}/api/reply?session=${encodeURIComponent(session)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ annotationId, text, resolve }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    console.error(`Error: ${(err as { error: string }).error}`);
+    process.exit(1);
+  }
+
+  const data = (await res.json()) as { annotationId: string; status: string };
+  console.log(`${data.annotationId} — ${resolve ? 'replied + resolved' : 'replied'} (${data.status})`);
+}
+
+async function cliResolve(): Promise<void> {
+  const annotationId = args[1];
+  if (!annotationId) {
+    console.error('Usage: md-annotate resolve <annotation-id>');
+    process.exit(1);
+  }
+
+  const session = process.env.ITERM_SESSION_ID;
+  if (!session) {
+    console.error('Error: $ITERM_SESSION_ID is not set');
+    process.exit(1);
+  }
+
+  const url = `http://localhost:${PORT}/api/resolve?session=${encodeURIComponent(session)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ annotationId }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    console.error(`Error: ${(err as { error: string }).error}`);
+    process.exit(1);
+  }
+
+  console.log(`${annotationId} — resolved`);
+}
+
+if (args[0] === 'reply') {
+  cliReply().catch((err) => {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  });
+} else if (args[0] === 'resolve') {
+  cliResolve().catch((err) => {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  });
+} else {
+
+// --- Daemon / open-file mode ---
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
 Usage: md-annotate [file.md] [options]
 
-Modes:
+Subcommands:
+  md-annotate reply [--resolve] <id> "text"   Reply to an annotation
+  md-annotate resolve <id>                     Resolve an annotation
+
+Daemon mode:
   md-annotate              Start the daemon (no file required)
   md-annotate file.md      Start daemon and open file in browser
 
@@ -66,3 +151,5 @@ if (filePath && !noOpen) {
   // Small delay to let server start
   setTimeout(() => open(url), 500);
 }
+
+} // end else (daemon mode)

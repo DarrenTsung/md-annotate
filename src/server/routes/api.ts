@@ -169,6 +169,87 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
   });
 
+  // POST /api/reply?session=... — CLI: md-annotate reply <id> "text"
+  router.post('/reply', (req, res) => {
+    const session = typeof req.query.session === 'string' ? req.query.session : null;
+    if (!session) {
+      res.status(400).json({ error: 'session query parameter is required' });
+      return;
+    }
+
+    const filePath = fileManager.getFileForSession(session);
+    if (!filePath) {
+      res.status(404).json({ error: 'No file associated with this session' });
+      return;
+    }
+
+    const { annotationId, text, resolve } = req.body as {
+      annotationId: string;
+      text: string;
+      resolve?: boolean;
+    };
+    if (!annotationId || !text) {
+      res.status(400).json({ error: 'annotationId and text are required' });
+      return;
+    }
+
+    try {
+      const svc = fileManager.getAnnotationService(filePath);
+      const comment = svc.addComment(annotationId, 'claude', text);
+      if (!comment) {
+        res.status(404).json({ error: 'Annotation not found' });
+        return;
+      }
+
+      if (resolve) {
+        svc.update(annotationId, { status: 'resolved' });
+      }
+
+      fileManager.broadcastAnnotations(filePath);
+      const annotation = svc.getById(annotationId);
+      res.json({ annotationId, status: annotation?.status, comment });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/resolve?session=... — CLI: md-annotate resolve <id>
+  router.post('/resolve', (req, res) => {
+    const session = typeof req.query.session === 'string' ? req.query.session : null;
+    if (!session) {
+      res.status(400).json({ error: 'session query parameter is required' });
+      return;
+    }
+
+    const filePath = fileManager.getFileForSession(session);
+    if (!filePath) {
+      res.status(404).json({ error: 'No file associated with this session' });
+      return;
+    }
+
+    const { annotationId } = req.body as { annotationId: string };
+    if (!annotationId) {
+      res.status(400).json({ error: 'annotationId is required' });
+      return;
+    }
+
+    try {
+      const svc = fileManager.getAnnotationService(filePath);
+      const annotation = svc.update(annotationId, { status: 'resolved' });
+      if (!annotation) {
+        res.status(404).json({ error: 'Annotation not found' });
+        return;
+      }
+
+      fileManager.broadcastAnnotations(filePath);
+      res.json({ annotationId, status: 'resolved' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
   // GET /api/claude/status?session=...
   router.get('/claude/status', (req, res) => {
     const session = typeof req.query.session === 'string' ? req.query.session : null;

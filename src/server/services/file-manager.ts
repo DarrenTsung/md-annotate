@@ -218,6 +218,18 @@ export class FileManager {
   }
 
   /**
+   * Reverse lookup: find which file a session is associated with.
+   */
+  getFileForSession(session: string): string | null {
+    for (const [filePath, state] of this.files) {
+      if (state.sessions.has(session)) {
+        return filePath;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Get annotation service for a file.
    */
   getAnnotationService(filePath: string): AnnotationService {

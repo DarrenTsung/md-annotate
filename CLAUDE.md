@@ -8,17 +8,17 @@ Google Docs-style inline annotation tool for markdown files with Claude Code int
 - **URL-driven routing**: Clients open `http://localhost:3456?file=/path/to/file.md&session=ITERM_SESSION_ID`. The server associates the iTerm session with that file for annotation routing.
 - **FileManager**: Central service managing `Map<filePath, FileState>`. Each `FileState` holds markdown/HTML caches, `AnnotationService`, chokidar watchers, connected WebSocket clients, and associated iTerm sessions. Cleans up after last client disconnects.
 - **Client**: React + Vite on port 5174 (dev). Reads `file` and `session` from URL search params. Text selection → source offset mapping → annotation creation. Highlights via `<mark>` injection. Comment sidebar with threads.
-- **Claude integration**: When annotations are created, they're sent to all iTerm sessions watching that file via AppleScript (per-session debounce queues). Claude responds by editing the sidecar JSON directly; file watcher pushes updates to subscribed browser clients via WebSocket.
+- **Claude integration**: When annotations are created, they're sent to all iTerm sessions watching that file via AppleScript (per-session debounce queues). Claude responds via CLI subcommands (`md-annotate reply`, `md-annotate resolve`) that call the daemon API; the server handles JSON bookkeeping and broadcasts updates to browser clients via WebSocket.
 
 ## Key files
 
-- `bin/md-annotate.ts` — CLI entry point (daemon mode or open-file mode)
+- `bin/md-annotate.ts` — CLI entry point (daemon mode, open-file mode, and `reply`/`resolve` subcommands)
 - `src/server/index.ts` — Express + WebSocket server setup
 - `src/server/services/file-manager.ts` — Per-file state management (watchers, caches, client sets)
 - `src/server/services/iterm-bridge.ts` — Multi-session AppleScript integration
 - `src/server/services/annotations.ts` — Sidecar CRUD + re-anchoring
 - `src/server/services/markdown.ts` — markdown-it with source offset plugin
-- `src/server/routes/api.ts` — REST API (all routes accept `filePath` query param)
+- `src/server/routes/api.ts` — REST API (`filePath`-based routes + session-based `/api/reply` and `/api/resolve`)
 - `src/client/src/hooks/useAnnotations.ts` — Data fetching + WebSocket subscription (file-scoped)
 - `src/client/src/lib/api.ts` — API client (parameterized by filePath + session)
 - `src/client/src/hooks/useTextSelection.ts` — Selection API → source offset
@@ -33,6 +33,15 @@ md-annotate
 
 # Or start daemon and open a file
 md-annotate test.md
+
+# Reply to an annotation (uses $ITERM_SESSION_ID to find the file)
+md-annotate reply <annotation-id> "response text"
+
+# Reply and resolve in one shot
+md-annotate reply --resolve <annotation-id> "done"
+
+# Resolve without replying
+md-annotate resolve <annotation-id>
 
 # Dev (server + Vite HMR)
 npm run dev

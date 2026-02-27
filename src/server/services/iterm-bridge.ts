@@ -109,12 +109,10 @@ export class ItermBridge {
       lines.push('');
     }
 
-    lines.push(
-      "To respond: edit the annotations file directly. Add replies to a comment's"
-    );
-    lines.push(
-      '`comments` array (with author: "claude"). Set status to "resolved" when done.'
-    );
+    lines.push('To respond, run:');
+    lines.push('  md-annotate reply <annotation-id> "your response"');
+    lines.push('To resolve:');
+    lines.push('  md-annotate reply --resolve <annotation-id> "your response"');
 
     return lines.join('\n');
   }
