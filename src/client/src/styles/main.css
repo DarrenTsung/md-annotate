@@ -271,9 +271,48 @@ body {
   background-color: var(--highlight-active);
 }
 
+.annotation-highlight.active {
+  background-color: var(--highlight-active);
+  text-decoration: underline 2px var(--primary);
+  text-underline-offset: 2px;
+}
+
 .annotation-highlight.resolved {
   background-color: var(--highlight-resolved);
-  opacity: 0.6;
+}
+
+.annotation-highlight.resolved.active {
+  background-color: var(--highlight-resolved);
+  text-decoration: underline 2px var(--primary);
+  text-underline-offset: 2px;
+}
+
+@keyframes highlight-blink {
+  0%, 100% { background-color: var(--highlight-active); }
+  25% { background-color: #ffd700; }
+  50% { background-color: var(--highlight-active); }
+  75% { background-color: #ffd700; }
+}
+
+@keyframes highlight-blink-resolved {
+  0%, 100% { background-color: var(--highlight-resolved); }
+  25% { background-color: #d4d4d4; }
+  50% { background-color: var(--highlight-resolved); }
+  75% { background-color: #d4d4d4; }
+}
+
+.highlight-blink {
+  animation: highlight-blink 0.8s ease-in-out;
+}
+
+.annotation-highlight.resolved.highlight-blink {
+  animation: highlight-blink-resolved 0.8s ease-in-out;
+}
+
+/* Pending selection highlight (while writing a comment) */
+.pending-highlight {
+  background-color: var(--highlight-active);
+  border-radius: 2px;
 }
 
 /* Selection popover */

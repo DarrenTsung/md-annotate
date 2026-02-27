@@ -3,7 +3,7 @@
 import path from 'path';
 import fs from 'fs';
 import open from 'open';
-import { startServer } from '../src/server/index.js';
+import { createServer } from 'vite';
 
 const args = process.argv.slice(2);
 const PORT = 3456;
@@ -138,8 +138,15 @@ if (fileArg) {
   }
 }
 
-// Start the daemon
-startServer({ port, noOpen });
+// Start the Vite dev server (with API + WS embedded via plugin)
+const server = await createServer({
+  configFile: path.resolve(import.meta.dirname, '../vite.config.ts'),
+  server: { port },
+});
+await server.listen();
+
+console.log(`md-annotate daemon running at http://localhost:${port}`);
+console.log('Waiting for file connections...');
 
 // If a file was specified, open the browser to it
 if (filePath && !noOpen) {
@@ -147,9 +154,7 @@ if (filePath && !noOpen) {
   const params = new URLSearchParams({ file: filePath });
   if (session) params.set('session', session);
   const url = `http://localhost:${port}?${params.toString()}`;
-
-  // Small delay to let server start
-  setTimeout(() => open(url), 500);
+  open(url);
 }
 
 } // end else (daemon mode)

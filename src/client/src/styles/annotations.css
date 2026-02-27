@@ -80,12 +80,8 @@
   padding-left: 13px;
 }
 
-.comment-thread.resolved {
-  opacity: 0.6;
-}
-
-.comment-thread.resolved.active {
-  opacity: 1;
+.comment-thread.resolved .thread-selected-text {
+  text-decoration: line-through;
 }
 
 .thread-header {

@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { mdAnnotatePlugin } from './src/server/vite-plugin.js';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), mdAnnotatePlugin()],
   root: 'src/client',
   resolve: {
     alias: {
@@ -11,17 +12,6 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5174,
-    proxy: {
-      '/api': 'http://localhost:3456',
-      '/ws': {
-        target: 'ws://localhost:3456',
-        ws: true,
-      },
-    },
-  },
-  build: {
-    outDir: '../../dist/client',
-    emptyOutDir: true,
+    port: 3456,
   },
 });

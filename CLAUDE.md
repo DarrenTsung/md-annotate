@@ -4,16 +4,16 @@ Google Docs-style inline annotation tool for markdown files with Claude Code int
 
 ## Architecture
 
-- **Daemon**: A single global Express + WebSocket server on port 3456 that handles any file. Start with `md-annotate` (no args). Per-file state (watchers, annotations, markdown cache) is created lazily when a client connects.
+- **Daemon**: A single Vite dev server on port 3456 with Express API + WebSocket embedded via a Vite plugin. Start with `md-annotate` (no args). Per-file state (watchers, annotations, markdown cache) is created lazily when a client connects.
 - **URL-driven routing**: Clients open `http://localhost:3456?file=/path/to/file.md&session=ITERM_SESSION_ID`. The server associates the iTerm session with that file for annotation routing.
 - **FileManager**: Central service managing `Map<filePath, FileState>`. Each `FileState` holds markdown/HTML caches, `AnnotationService`, chokidar watchers, connected WebSocket clients, and associated iTerm sessions. Cleans up after last client disconnects.
-- **Client**: React + Vite on port 5174 (dev). Reads `file` and `session` from URL search params. Text selection → source offset mapping → annotation creation. Highlights via `<mark>` injection. Comment sidebar with threads.
+- **Client**: React + Vite (served from the same port 3456). Reads `file` and `session` from URL search params. Text selection → source offset mapping → annotation creation. Highlights via `<mark>` injection. Comment sidebar with threads.
 - **Claude integration**: When annotations are created, they're sent to all iTerm sessions watching that file via AppleScript (per-session debounce queues). Claude responds via CLI subcommands (`md-annotate reply`, `md-annotate resolve`) that call the daemon API; the server handles JSON bookkeeping and broadcasts updates to browser clients via WebSocket.
 
 ## Key files
 
 - `bin/md-annotate.ts` — CLI entry point (daemon mode, open-file mode, and `reply`/`resolve` subcommands)
-- `src/server/index.ts` — Express + WebSocket server setup
+- `src/server/vite-plugin.ts` — Vite plugin embedding Express API + WebSocket
 - `src/server/services/file-manager.ts` — Per-file state management (watchers, caches, client sets)
 - `src/server/services/iterm-bridge.ts` — Multi-session AppleScript integration
 - `src/server/services/annotations.ts` — Sidecar CRUD + re-anchoring
@@ -43,12 +43,10 @@ md-annotate reply --resolve <annotation-id> "done"
 # Resolve without replying
 md-annotate resolve <annotation-id>
 
-# Dev (server + Vite HMR)
+# Dev (single server with HMR)
 npm run dev
-# Then open http://localhost:5174?file=/path/to/test.md
+# Then open http://localhost:3456?file=/path/to/test.md
 ```
-
-Dev client: http://localhost:5174 (proxies `/api` and `/ws` to Express on 3456).
 
 ## Using with Claude Code
 

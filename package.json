@@ -7,11 +7,9 @@
     "md-annotate": "./bin/md-annotate"
   },
   "scripts": {
-    "dev": "concurrently --names server,client \"tsx watch bin/md-annotate.ts\" \"vite\"",
-    "dev:server": "tsx watch bin/md-annotate.ts",
-    "dev:client": "vite",
-    "build": "vite build && tsc --noEmit",
-    "start": "tsx bin/md-annotate.ts"
+    "dev": "tsx bin/md-annotate.ts",
+    "start": "tsx bin/md-annotate.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "chokidar": "^4.0.3",
@@ -31,7 +29,6 @@
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.5.14",
     "@vitejs/plugin-react": "^4.3.4",
-    "concurrently": "^9.1.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsx": "^4.19.3",
