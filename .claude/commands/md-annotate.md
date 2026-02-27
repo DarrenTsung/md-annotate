@@ -7,8 +7,14 @@ Open the md-annotate UI for the given file. The daemon should already be running
    ```
 3. Tell the user the annotation UI is open and wait for `[md-annotate]` messages.
 
-When you receive a `[md-annotate]` message, read the annotations sidecar file it references. For each annotation:
-- **Questions/open-ended comments**: Read the relevant markdown, add a reply with `"author": "claude"`, keep status `"open"`.
-- **Tasks/action requests**: Edit the markdown file, add a reply with `"author": "claude"` explaining what you changed, set status to `"resolved"`.
+When you receive a `[md-annotate]` message, handle each annotation using the CLI subcommands:
+- **Questions/open-ended comments**: Read the relevant markdown, then reply:
+  ```
+  md-annotate reply <annotation-id> "your response"
+  ```
+- **Tasks/action requests**: Edit the markdown file, then reply and resolve:
+  ```
+  md-annotate reply --resolve <annotation-id> "explanation of what you changed"
+  ```
 
-Write the updated JSON back to the sidecar file. Only modify the specific annotation(s) mentioned.
+Do not edit the `.annotations.json` sidecar file directly — always use the CLI commands.
