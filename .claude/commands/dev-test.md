@@ -48,7 +48,7 @@ You will actually execute each step — use Bash for shell commands, `/playwrigh
 
 Use `/playwright-cli` for all browser interaction. Open:
 ```
-http://localhost:5174?file=$FILE&session=w0tty0:$SESSION_UUID
+http://localhost:3456?file=$FILE&session=w0tty0:$SESSION_UUID
 ```
 
 The `session` param format is `w0tty0:<uuid>` — this registers the iTerm session with the file in the daemon's FileManager. To find the actual prefix, read `$ITERM_SESSION_ID` — it's `<prefix>:<uuid>`. But since we split from our own session, the new pane inherits the same `w0t` prefix format. Check via `read-session.sh` if needed.

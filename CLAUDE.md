@@ -12,7 +12,7 @@ Google Docs-style inline annotation tool for markdown files with Claude Code int
 
 ## Key files
 
-- `bin/md-annotate.ts` — CLI entry point (daemon mode, open-file mode, and `reply`/`resolve` subcommands)
+- `bin/md-annotate.ts` — CLI entry point (daemon mode, `open`/`reply`/`resolve` subcommands)
 - `src/server/vite-plugin.ts` — Vite plugin embedding Express API + WebSocket
 - `src/server/services/file-manager.ts` — Per-file state management (watchers, caches, client sets)
 - `src/server/services/iterm-bridge.ts` — Multi-session AppleScript integration
@@ -34,6 +34,9 @@ md-annotate
 # Or start daemon and open a file
 md-annotate test.md
 
+# Open a file (daemon must be running, resolves relative paths)
+md-annotate open ./path/to/file.md
+
 # Reply to an annotation (uses $ITERM_SESSION_ID to find the file)
 md-annotate reply <annotation-id> "response text"
 
@@ -50,7 +53,7 @@ npm run dev
 
 ## Using with Claude Code
 
-The `/md-annotate` skill constructs a URL with the file path and `$ITERM_SESSION_ID`, opens the browser, and waits for annotation messages. The daemon must be running first.
+The `/md-annotate` skill runs `md-annotate open <file>` which resolves the path to absolute and opens the browser with the file path and `$ITERM_SESSION_ID`. The daemon must be running first.
 
 ## Testing
 

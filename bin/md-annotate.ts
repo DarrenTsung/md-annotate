@@ -74,7 +74,34 @@ async function cliResolve(): Promise<void> {
   console.log(`${annotationId} — resolved`);
 }
 
-if (args[0] === 'reply') {
+function cliOpen(): void {
+  const fileArg = args[1];
+  if (!fileArg) {
+    console.error('Usage: md-annotate open <file.md>');
+    process.exit(1);
+  }
+
+  const filePath = path.resolve(fileArg);
+  if (!fs.existsSync(filePath)) {
+    console.error(`File not found: ${filePath}`);
+    process.exit(1);
+  }
+  if (!filePath.endsWith('.md')) {
+    console.error(`File must be a .md file: ${filePath}`);
+    process.exit(1);
+  }
+
+  const session = process.env.ITERM_SESSION_ID || '';
+  const params = new URLSearchParams({ file: filePath });
+  if (session) params.set('session', session);
+  const url = `http://localhost:${PORT}?${params.toString()}`;
+  open(url);
+  console.log(`Opened ${filePath}`);
+}
+
+if (args[0] === 'open') {
+  cliOpen();
+} else if (args[0] === 'reply') {
   cliReply().catch((err) => {
     console.error(`Error: ${err.message}`);
     process.exit(1);
@@ -93,6 +120,7 @@ if (args.includes('--help') || args.includes('-h')) {
 Usage: md-annotate [file.md] [options]
 
 Subcommands:
+  md-annotate open <file.md>                   Open a file in the browser
   md-annotate reply [--resolve] <id> "text"   Reply to an annotation
   md-annotate resolve <id>                     Resolve an annotation
 
