@@ -47,6 +47,14 @@ The `/md-annotate` skill constructs a URL with the file path and `$ITERM_SESSION
 
 ## Testing
 
+### E2E browser tests
+
+Always use the `/playwright-cli` skill for running Playwright e2e tests. Never install or run Playwright directly.
+
+Test files live in `tests/`. Fixture markdown files in `tests/fixtures/`.
+
+The Playwright config (`playwright.config.ts`) starts the dev server (`npm run dev`) automatically via `webServer`.
+
 ### E2E test scripts (`scripts/`)
 
 These use AppleScript to manage iTerm sessions for testing the Claude integration loop without polluting the current session:
