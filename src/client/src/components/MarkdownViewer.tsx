@@ -85,7 +85,8 @@ export function MarkdownViewer({
     return applyPendingHighlight(
       container,
       selection.offset.startOffset,
-      selection.offset.endOffset
+      selection.offset.endOffset,
+      selection.offset.selectedText
     );
   }, [selection]);
 

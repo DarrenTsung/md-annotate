@@ -1,8 +1,11 @@
 /**
  * Injects <mark> elements into rendered HTML to highlight annotated text ranges.
  *
- * This works by walking the text nodes of the rendered HTML and wrapping
- * the ranges that correspond to annotations with <mark> elements.
+ * Highlights are positioned by searching for the annotation's selectedText
+ * within the block element's rendered text content. Raw markdown offsets are
+ * only used to identify which block(s) an annotation belongs to — the
+ * within-block positioning uses rendered text matching to avoid drift caused
+ * by markdown syntax stripping.
  */
 
 import type { Annotation } from '@shared/types.js';
@@ -11,6 +14,7 @@ interface HighlightRange {
   annotationId: string;
   startOffset: number;
   endOffset: number;
+  selectedText?: string;
   status: 'open' | 'resolved';
 }
 
@@ -27,6 +31,7 @@ export function applyHighlights(
       annotationId: a.id,
       startOffset: a.startOffset,
       endOffset: a.endOffset,
+      selectedText: a.selectedText,
       status: a.status,
     })
   );
@@ -41,13 +46,15 @@ export function applyHighlights(
 export function applyPendingHighlight(
   container: HTMLElement,
   startOffset: number,
-  endOffset: number
+  endOffset: number,
+  selectedText?: string
 ): () => void {
   return applyHighlightRanges(container, [
     {
       annotationId: '__pending__',
       startOffset,
       endOffset,
+      selectedText,
       status: 'pending' as 'open',
       className: 'pending-highlight',
     },
@@ -80,12 +87,11 @@ function applyHighlightRanges(
         10
       );
 
-      // Check if this range overlaps with this block
+      // Check if this range overlaps with this block (using raw offsets)
       if (range.startOffset >= blockEnd || range.endOffset <= blockStart) {
         continue;
       }
 
-      // Walk text nodes and find the text that matches
       highlightTextInElement(el, range, blockStart, marks);
     }
   }
@@ -102,43 +108,122 @@ function applyHighlightRanges(
   };
 }
 
+/**
+ * Find all occurrences of `needle` in `haystack` and return their start indices.
+ */
+function findAllOccurrences(haystack: string, needle: string): number[] {
+  const indices: number[] = [];
+  let pos = 0;
+  while (pos <= haystack.length - needle.length) {
+    const idx = haystack.indexOf(needle, pos);
+    if (idx === -1) break;
+    indices.push(idx);
+    pos = idx + 1;
+  }
+  return indices;
+}
+
 function highlightTextInElement(
   element: HTMLElement,
   range: HighlightRangeWithClass,
   blockStartOffset: number,
   marks: HTMLElement[]
 ): void {
+  // Collect all text nodes and build the full rendered text
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-  let currentOffset = blockStartOffset;
-  const nodesToWrap: { node: Text; start: number; end: number }[] = [];
-
+  const textNodes: Text[] = [];
+  let fullText = '';
   let node: Text | null;
   while ((node = walker.nextNode() as Text | null)) {
-    const text = node.textContent || '';
-    const nodeStart = currentOffset;
-    const nodeEnd = currentOffset + text.length;
+    textNodes.push(node);
+    fullText += node.textContent || '';
+  }
 
-    // Check overlap with annotation range
-    const overlapStart = Math.max(range.startOffset, nodeStart);
-    const overlapEnd = Math.min(range.endOffset, nodeEnd);
+  // Find the highlight range within the rendered text
+  let matchStart: number;
+  let matchEnd: number;
+
+  if (range.selectedText && range.selectedText.length > 0) {
+    // Search for the selectedText in the block's rendered text
+    const occurrences = findAllOccurrences(fullText, range.selectedText);
+
+    if (occurrences.length === 0) {
+      // Try whitespace-normalized match
+      const normalized = range.selectedText.replace(/\s+/g, ' ');
+      const normalizedFull = fullText.replace(/\s+/g, ' ');
+      const idx = normalizedFull.indexOf(normalized);
+      if (idx === -1) return;
+      // Map back to original positions approximately
+      matchStart = idx;
+      matchEnd = idx + normalized.length;
+    } else if (occurrences.length === 1) {
+      matchStart = occurrences[0];
+      matchEnd = matchStart + range.selectedText.length;
+    } else {
+      // Multiple occurrences — pick the one closest to the expected
+      // position based on the raw offset's proportion within the block
+      const blockEnd = parseInt(
+        element.getAttribute('data-source-end') || String(blockStartOffset + fullText.length),
+        10
+      );
+      const rawBlockLength = blockEnd - blockStartOffset;
+      const relativePos = rawBlockLength > 0
+        ? (range.startOffset - blockStartOffset) / rawBlockLength
+        : 0;
+      const expectedPos = Math.round(relativePos * fullText.length);
+
+      let bestIdx = occurrences[0];
+      let bestDist = Math.abs(bestIdx - expectedPos);
+      for (let i = 1; i < occurrences.length; i++) {
+        const dist = Math.abs(occurrences[i] - expectedPos);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = occurrences[i];
+        }
+      }
+      matchStart = bestIdx;
+      matchEnd = matchStart + range.selectedText.length;
+    }
+  } else {
+    // No selectedText available — fall back to offset-based positioning
+    // (less accurate but works for pending highlights without selectedText)
+    matchStart = range.startOffset - blockStartOffset;
+    matchEnd = range.endOffset - blockStartOffset;
+  }
+
+  // Clamp to rendered text bounds
+  matchStart = Math.max(0, Math.min(matchStart, fullText.length));
+  matchEnd = Math.max(matchStart, Math.min(matchEnd, fullText.length));
+  if (matchStart >= matchEnd) return;
+
+  // Map match positions back to text nodes
+  const nodesToWrap: { node: Text; start: number; end: number }[] = [];
+  let currentPos = 0;
+
+  for (const textNode of textNodes) {
+    const text = textNode.textContent || '';
+    const nodeStart = currentPos;
+    const nodeEnd = currentPos + text.length;
+
+    const overlapStart = Math.max(matchStart, nodeStart);
+    const overlapEnd = Math.min(matchEnd, nodeEnd);
 
     if (overlapStart < overlapEnd) {
       nodesToWrap.push({
-        node,
+        node: textNode,
         start: overlapStart - nodeStart,
         end: overlapEnd - nodeStart,
       });
     }
 
-    currentOffset = nodeEnd;
+    currentPos = nodeEnd;
   }
 
   // Wrap matching text nodes (process in reverse to avoid invalidating offsets)
   for (let i = nodesToWrap.length - 1; i >= 0; i--) {
-    const { node, start, end } = nodesToWrap[i];
-    const text = node.textContent || '';
+    const { node: textNode, start, end } = nodesToWrap[i];
+    const text = textNode.textContent || '';
 
-    // Split the text node as needed
     const before = text.slice(0, start);
     const middle = text.slice(start, end);
     const after = text.slice(end);
@@ -149,20 +234,20 @@ function highlightTextInElement(
     mark.textContent = middle;
     marks.push(mark);
 
-    const parent = node.parentNode;
+    const parent = textNode.parentNode;
     if (!parent) continue;
 
     if (after) {
       const afterNode = document.createTextNode(after);
-      parent.insertBefore(afterNode, node.nextSibling);
+      parent.insertBefore(afterNode, textNode.nextSibling);
     }
 
-    parent.insertBefore(mark, node.nextSibling);
+    parent.insertBefore(mark, textNode.nextSibling);
 
     if (before) {
-      node.textContent = before;
+      textNode.textContent = before;
     } else {
-      parent.removeChild(node);
+      parent.removeChild(textNode);
     }
   }
 }
