@@ -339,6 +339,32 @@ body {
   animation: highlight-fade-in 0.2s ease-out;
 }
 
+/* Selection pill (appears on text selection, click to open popover) */
+@keyframes pill-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.selection-pill {
+  z-index: 200;
+  background: var(--text);
+  color: var(--bg);
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  animation: pill-in 0.12s ease-out;
+  transition: background-color 0.1s;
+}
+
+.selection-pill:hover {
+  background: var(--primary);
+}
+
 /* Selection popover */
 @keyframes popover-in {
   from {

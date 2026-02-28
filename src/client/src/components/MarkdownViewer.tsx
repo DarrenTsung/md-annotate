@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import type { Annotation } from '@shared/types.js';
 import { applyHighlights, applyPendingHighlight } from '../lib/highlight.js';
 import { useTextSelection } from '../hooks/useTextSelection.js';
@@ -24,6 +24,12 @@ export function MarkdownViewer({
 }: MarkdownViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { selection, clearSelection } = useTextSelection(containerRef, rawMarkdown);
+  const [showPopover, setShowPopover] = useState(false);
+
+  // Reset popover when selection changes
+  useEffect(() => {
+    if (!selection) setShowPopover(false);
+  }, [selection]);
 
   // Memoize so React's reference check skips innerHTML re-assignment
   // when only activeAnnotationId changes (not renderedHtml)
@@ -80,7 +86,7 @@ export function MarkdownViewer({
   // Highlight the pending selection while the popover is open
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !selection) return;
+    if (!container || !selection || !showPopover) return;
 
     return applyPendingHighlight(
       container,
@@ -88,7 +94,7 @@ export function MarkdownViewer({
       selection.offset.endOffset,
       selection.offset.selectedText
     );
-  }, [selection]);
+  }, [selection, showPopover]);
 
   // Handle clicks on highlights and anchor links
   useEffect(() => {
@@ -129,6 +135,19 @@ export function MarkdownViewer({
     }
   }
 
+  function handleOpenPopover() {
+    setShowPopover(true);
+    // Clear the browser selection so it doesn't interfere with the form
+    window.getSelection()?.removeAllRanges();
+  }
+
+  // Position the pill above the selection
+  const pillStyle = selection ? {
+    position: 'fixed' as const,
+    top: Math.max(4, selection.rect.top - 32),
+    left: Math.max(4, Math.min(selection.rect.left, window.innerWidth - 100)),
+  } : undefined;
+
   return (
     <div className="markdown-viewer-container">
       <article
@@ -136,7 +155,17 @@ export function MarkdownViewer({
         className="markdown-viewer"
         dangerouslySetInnerHTML={htmlPayload}
       />
-      {selection && (
+      {selection && !showPopover && (
+        <button
+          className="selection-pill"
+          style={pillStyle}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={handleOpenPopover}
+        >
+          + Comment
+        </button>
+      )}
+      {selection && showPopover && (
         <SelectionPopover
           rect={selection.rect}
           selectedText={selection.offset.selectedText}
