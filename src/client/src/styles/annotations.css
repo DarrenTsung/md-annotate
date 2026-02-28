@@ -1,3 +1,14 @@
+/* Animations */
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* Comment sidebar */
 .comment-sidebar {
   width: var(--sidebar-width);
@@ -60,14 +71,16 @@
   letter-spacing: 0.5px;
   border-top: 1px solid var(--border);
   margin-top: 2px;
+  animation: fade-in 0.2s ease-out;
 }
 
 /* Comment thread */
 .comment-thread {
   padding: 7px 12px;
   border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
   cursor: pointer;
-  transition: background-color 0.1s;
+  transition: background-color 0.15s ease, border-color 0.15s ease, padding-left 0.15s ease;
 }
 
 .comment-thread:hover {
@@ -76,7 +89,7 @@
 
 .comment-thread.active {
   background: var(--primary-light);
-  border-left: 3px solid var(--primary);
+  border-left-color: var(--primary);
   padding-left: 9px;
 }
 
@@ -111,6 +124,11 @@
   color: var(--primary);
 }
 
+@keyframes badge-in {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 .sent-badge {
   font-size: 9px;
   padding: 1px 4px;
@@ -119,6 +137,7 @@
   color: var(--claude-purple);
   font-weight: 600;
   flex-shrink: 0;
+  animation: badge-in 0.2s ease-out;
 }
 
 /* Individual comments in thread */
@@ -160,25 +179,44 @@
   word-wrap: break-word;
 }
 
+@keyframes comment-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .claude-comment {
   background: var(--claude-bg);
   padding: 5px 7px;
   border-radius: 3px;
   border-left: 2px solid var(--claude-purple);
+  animation: comment-in 0.2s ease-out;
 }
 
 /* Thread actions */
+@keyframes actions-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .thread-actions {
   margin-top: 5px;
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+  animation: actions-in 0.12s ease-out;
 }
 
 /* Comment form (reply) */
+@keyframes form-in {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 200px; }
+}
+
 .comment-form {
   width: 100%;
   margin-top: 3px;
+  animation: form-in 0.15s ease-out;
+  overflow: hidden;
 }
 
 .comment-textarea {

@@ -253,6 +253,7 @@ body {
   text-decoration: underline;
   text-decoration-color: rgba(5, 80, 174, 0.3);
   text-underline-offset: 2px;
+  transition: text-decoration-color 0.15s ease;
 }
 
 .markdown-viewer a:hover {
@@ -271,7 +272,7 @@ body {
   cursor: pointer;
   border-radius: 2px;
   border-bottom: 1px solid rgba(200, 170, 0, 0.35);
-  transition: background-color 0.15s;
+  transition: background-color 0.2s ease, text-decoration-color 0.2s ease;
 }
 
 .annotation-highlight:hover {
@@ -317,12 +318,29 @@ body {
 }
 
 /* Pending selection highlight (while writing a comment) */
+@keyframes highlight-fade-in {
+  from { background-color: transparent; }
+  to { background-color: var(--highlight-active); }
+}
+
 .pending-highlight {
   background-color: var(--highlight-active);
   border-radius: 2px;
+  animation: highlight-fade-in 0.2s ease-out;
 }
 
 /* Selection popover */
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .selection-popover {
   z-index: 200;
   background: var(--bg);
@@ -331,6 +349,7 @@ body {
   box-shadow: var(--shadow-lg);
   padding: 12px;
   width: 320px;
+  animation: popover-in 0.15s ease-out;
 }
 
 .popover-selected-text {
