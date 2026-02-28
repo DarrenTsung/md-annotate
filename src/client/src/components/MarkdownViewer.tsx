@@ -90,16 +90,31 @@ export function MarkdownViewer({
     );
   }, [selection]);
 
-  // Handle clicks on highlights
+  // Handle clicks on highlights and anchor links
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     function handleClick(e: MouseEvent) {
-      const mark = (e.target as HTMLElement).closest('mark[data-annotation-id]');
+      const target = e.target as HTMLElement;
+
+      // Annotation highlight clicks
+      const mark = target.closest('mark[data-annotation-id]');
       if (mark) {
         const id = mark.getAttribute('data-annotation-id');
         if (id) onHighlightClick(id);
+        return;
+      }
+
+      // Anchor link clicks — smooth scroll instead of navigating
+      const link = target.closest('a[href^="#"]') as HTMLAnchorElement | null;
+      if (link) {
+        e.preventDefault();
+        const id = decodeURIComponent(link.getAttribute('href')!.slice(1));
+        const heading = document.getElementById(id);
+        if (heading) {
+          heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       }
     }
 

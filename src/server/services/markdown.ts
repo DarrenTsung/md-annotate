@@ -58,16 +58,46 @@ function getMd(): MarkdownIt {
     });
     mdInstance.use(sourceOffsetPlugin);
 
-    // Open all links in a new tab
-    const defaultRender = mdInstance.renderer.rules.link_open ||
+    // Add id slugs to headings for anchor links
+    const defaultHeadingOpen = mdInstance.renderer.rules.heading_open ||
+      function (tokens, idx, options, _env, self) {
+        return self.renderToken(tokens, idx, options);
+      };
+
+    mdInstance.renderer.rules.heading_open = function (tokens, idx, options, env, self) {
+      // The next token is the inline content of the heading
+      const contentToken = tokens[idx + 1];
+      if (contentToken?.children) {
+        const text = contentToken.children
+          .filter((t) => t.type === 'text' || t.type === 'code_inline')
+          .map((t) => t.content)
+          .join('');
+        const slug = text
+          .toLowerCase()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+        if (slug) {
+          tokens[idx].attrSet('id', slug);
+        }
+      }
+      return defaultHeadingOpen(tokens, idx, options, env, self);
+    };
+
+    // External links open in new tab; anchor links are left alone
+    const defaultLinkOpen = mdInstance.renderer.rules.link_open ||
       function (tokens, idx, options, _env, self) {
         return self.renderToken(tokens, idx, options);
       };
 
     mdInstance.renderer.rules.link_open = function (tokens, idx, options, env, self) {
-      tokens[idx].attrSet('target', '_blank');
-      tokens[idx].attrSet('rel', 'noopener noreferrer');
-      return defaultRender(tokens, idx, options, env, self);
+      const href = tokens[idx].attrGet('href') || '';
+      if (!href.startsWith('#')) {
+        tokens[idx].attrSet('target', '_blank');
+        tokens[idx].attrSet('rel', 'noopener noreferrer');
+      }
+      return defaultLinkOpen(tokens, idx, options, env, self);
     };
   }
   return mdInstance;
