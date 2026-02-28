@@ -33,6 +33,7 @@
 html {
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
 }
 
 body {
@@ -150,6 +151,15 @@ body {
 }
 
 /* Markdown content styling */
+.markdown-viewer h1,
+.markdown-viewer h2,
+.markdown-viewer h3,
+.markdown-viewer h4,
+.markdown-viewer h5,
+.markdown-viewer h6 {
+  scroll-margin-top: calc(var(--toolbar-height) + 16px);
+}
+
 .markdown-viewer h1 {
   font-size: 1.75em;
   font-weight: 700;
