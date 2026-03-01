@@ -148,7 +148,7 @@
 }
 
 .thread-comment {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .comment-header {
@@ -174,7 +174,7 @@
 
 .comment-text {
   color: var(--text);
-  line-height: 1.45;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -224,7 +224,7 @@
   border: 1px solid var(--border);
   border-radius: 3px;
   padding: 5px 7px;
-  font-size: 11px;
+  font-size: 12px;
   font-family: inherit;
   resize: vertical;
   outline: none;
