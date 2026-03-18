@@ -74,6 +74,113 @@ async function cliResolve(): Promise<void> {
   console.log(`${annotationId} — resolved`);
 }
 
+async function cliStart(): Promise<void> {
+  const annotationId = args[1];
+  if (!annotationId) {
+    console.error('Usage: md-annotate start <annotation-id>');
+    process.exit(1);
+  }
+
+  const session = process.env.ITERM_SESSION_ID;
+  if (!session) {
+    console.error('Error: $ITERM_SESSION_ID is not set');
+    process.exit(1);
+  }
+
+  const url = `http://localhost:${PORT}/api/start?session=${encodeURIComponent(session)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ annotationId }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    console.error(`Error: ${(err as { error: string }).error}`);
+    process.exit(1);
+  }
+
+  console.log(`${annotationId} — working`);
+}
+
+async function cliEnd(): Promise<void> {
+  const annotationId = args[1];
+  if (!annotationId) {
+    console.error('Usage: md-annotate end <annotation-id>');
+    process.exit(1);
+  }
+
+  const session = process.env.ITERM_SESSION_ID;
+  if (!session) {
+    console.error('Error: $ITERM_SESSION_ID is not set');
+    process.exit(1);
+  }
+
+  const url = `http://localhost:${PORT}/api/end?session=${encodeURIComponent(session)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ annotationId }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    console.error(`Error: ${(err as { error: string }).error}`);
+    process.exit(1);
+  }
+
+  console.log(`${annotationId} — stopped working`);
+}
+
+async function cliStatus(): Promise<void> {
+  const session = process.env.ITERM_SESSION_ID;
+  if (!session) {
+    console.error('Error: $ITERM_SESSION_ID is not set');
+    process.exit(1);
+  }
+
+  const url = `http://localhost:${PORT}/api/status?session=${encodeURIComponent(session)}`;
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    console.error(`Error: ${(err as { error: string }).error}`);
+    process.exit(1);
+  }
+
+  const annotations = (await res.json()) as Array<{
+    id: string;
+    selectedText: string;
+    comments: Array<{ author: string; text: string; createdAt: string }>;
+    createdAt: string;
+  }>;
+
+  if (annotations.length === 0) {
+    console.log('No pending annotations.');
+    return;
+  }
+
+  for (const a of annotations) {
+    const lastUserComment = [...a.comments].reverse().find((c) => c.author === 'user');
+    const text = a.selectedText.length > 30
+      ? a.selectedText.slice(0, 27) + '...'
+      : a.selectedText;
+    const ago = formatRelativeTime(lastUserComment?.createdAt || a.createdAt);
+    const comment = lastUserComment
+      ? `You: "${lastUserComment.text.length > 40 ? lastUserComment.text.slice(0, 37) + '...' : lastUserComment.text}"`
+      : '(no comment)';
+    console.log(`${a.id}  "${text}"  — ${comment} (${ago})`);
+  }
+}
+
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return `${Math.floor(diff / 86400000)}d ago`;
+}
+
 function cliOpen(): void {
   const fileArg = args[1];
   if (!fileArg) {
@@ -111,6 +218,21 @@ if (args[0] === 'open') {
     console.error(`Error: ${err.message}`);
     process.exit(1);
   });
+} else if (args[0] === 'start') {
+  cliStart().catch((err) => {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  });
+} else if (args[0] === 'end') {
+  cliEnd().catch((err) => {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  });
+} else if (args[0] === 'status') {
+  cliStatus().catch((err) => {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  });
 } else {
 
 // --- Daemon / open-file mode ---
@@ -123,6 +245,9 @@ Subcommands:
   md-annotate open <file.md>                   Open a file in the browser
   md-annotate reply [--resolve] <id> "text"   Reply to an annotation
   md-annotate resolve <id>                     Resolve an annotation
+  md-annotate start <id>                       Mark annotation as being worked on
+  md-annotate end <id>                         Clear working state
+  md-annotate status                           Show pending annotations needing replies
 
 Daemon mode:
   md-annotate              Start the daemon (no file required)

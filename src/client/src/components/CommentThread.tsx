@@ -42,7 +42,7 @@ export function CommentThread({
 
   return (
     <div
-      className={`comment-thread ${isActive ? 'active' : ''} ${isResolved ? 'resolved' : ''}`}
+      className={`comment-thread ${isActive ? 'active' : ''} ${isResolved ? 'resolved' : ''} ${annotation.working ? 'working' : ''}`}
       data-annotation-id={annotation.id}
       onClick={onActivate}
     >
@@ -56,7 +56,10 @@ export function CommentThread({
             ? annotation.selectedText.slice(0, 37) + '...'
             : annotation.selectedText}"
         </button>
-        {annotation.sentToClaude && (
+        {annotation.working && (
+          <span className="working-dot" title="Claude is working on this" />
+        )}
+        {annotation.sentToClaude && !annotation.working && (
           <span className="sent-badge" title="Sent to Claude">
             sent
           </span>

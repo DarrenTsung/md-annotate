@@ -14,6 +14,7 @@ export interface Annotation {
   comments: Comment[];
   status: 'open' | 'resolved';
   sentToClaude: boolean;
+  working: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,6 +44,7 @@ export interface AddCommentRequest {
 
 export interface UpdateAnnotationRequest {
   status?: 'open' | 'resolved';
+  working?: boolean;
 }
 
 export interface FileResponse {

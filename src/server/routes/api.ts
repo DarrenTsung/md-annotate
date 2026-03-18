@@ -201,9 +201,11 @@ export function createApiRouter(fileManager: FileManager): Router {
         return;
       }
 
-      if (resolve) {
-        svc.update(annotationId, { status: 'resolved' });
-      }
+      // Auto-clear working state when Claude replies
+      svc.update(annotationId, {
+        ...(resolve ? { status: 'resolved' as const } : {}),
+        working: false,
+      });
 
       fileManager.broadcastAnnotations(filePath);
       const annotation = svc.getById(annotationId);
@@ -244,6 +246,106 @@ export function createApiRouter(fileManager: FileManager): Router {
 
       fileManager.broadcastAnnotations(filePath);
       res.json({ annotationId, status: 'resolved' });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/start?session=... — CLI: md-annotate start <id>
+  router.post('/start', (req, res) => {
+    const session = typeof req.query.session === 'string' ? req.query.session : null;
+    if (!session) {
+      res.status(400).json({ error: 'session query parameter is required' });
+      return;
+    }
+
+    const filePath = fileManager.getFileForSession(session);
+    if (!filePath) {
+      res.status(404).json({ error: 'No file associated with this session' });
+      return;
+    }
+
+    const { annotationId } = req.body as { annotationId: string };
+    if (!annotationId) {
+      res.status(400).json({ error: 'annotationId is required' });
+      return;
+    }
+
+    try {
+      const svc = fileManager.getAnnotationService(filePath);
+      const annotation = svc.update(annotationId, { working: true });
+      if (!annotation) {
+        res.status(404).json({ error: 'Annotation not found' });
+        return;
+      }
+
+      fileManager.broadcastAnnotations(filePath);
+      res.json({ annotationId, working: true });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/end?session=... — CLI: md-annotate end <id>
+  router.post('/end', (req, res) => {
+    const session = typeof req.query.session === 'string' ? req.query.session : null;
+    if (!session) {
+      res.status(400).json({ error: 'session query parameter is required' });
+      return;
+    }
+
+    const filePath = fileManager.getFileForSession(session);
+    if (!filePath) {
+      res.status(404).json({ error: 'No file associated with this session' });
+      return;
+    }
+
+    const { annotationId } = req.body as { annotationId: string };
+    if (!annotationId) {
+      res.status(400).json({ error: 'annotationId is required' });
+      return;
+    }
+
+    try {
+      const svc = fileManager.getAnnotationService(filePath);
+      const annotation = svc.update(annotationId, { working: false });
+      if (!annotation) {
+        res.status(404).json({ error: 'Annotation not found' });
+        return;
+      }
+
+      fileManager.broadcastAnnotations(filePath);
+      res.json({ annotationId, working: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // GET /api/status?session=... — CLI: md-annotate status
+  router.get('/status', (req, res) => {
+    const session = typeof req.query.session === 'string' ? req.query.session : null;
+    if (!session) {
+      res.status(400).json({ error: 'session query parameter is required' });
+      return;
+    }
+
+    const filePath = fileManager.getFileForSession(session);
+    if (!filePath) {
+      res.status(404).json({ error: 'No file associated with this session' });
+      return;
+    }
+
+    try {
+      const svc = fileManager.getAnnotationService(filePath);
+      const annotations = svc.getAll().filter((a) => {
+        if (a.status !== 'open') return false;
+        // Include if no Claude reply yet
+        return !a.comments.some((c) => c.author === 'claude');
+      });
+      res.json(annotations);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: message });

@@ -46,6 +46,15 @@ md-annotate reply --resolve <annotation-id> "done"
 # Resolve without replying
 md-annotate resolve <annotation-id>
 
+# Mark annotation as being worked on (shows pulse animation in UI)
+md-annotate start <annotation-id>
+
+# Clear working state
+md-annotate end <annotation-id>
+
+# Show pending annotations needing replies
+md-annotate status
+
 # Dev (single server with HMR)
 npm run dev
 # Then open http://localhost:3456?file=/path/to/test.md

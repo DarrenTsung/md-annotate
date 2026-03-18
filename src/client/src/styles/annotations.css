@@ -129,6 +129,25 @@
   to { opacity: 1; transform: scale(1); }
 }
 
+/* Working state */
+@keyframes working-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.working-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--claude-purple);
+  flex-shrink: 0;
+  animation: working-pulse 1.2s ease-in-out infinite;
+}
+
+.comment-thread.working {
+  border-left-color: var(--claude-purple);
+}
+
 .sent-badge {
   font-size: 9px;
   padding: 1px 4px;

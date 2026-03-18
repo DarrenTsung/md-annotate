@@ -76,6 +76,7 @@ export class AnnotationService {
       ],
       status: 'open',
       sentToClaude: false,
+      working: false,
       createdAt: now,
       updatedAt: now,
     };
@@ -87,7 +88,7 @@ export class AnnotationService {
 
   update(
     id: string,
-    updates: Partial<Pick<Annotation, 'status'>>
+    updates: Partial<Pick<Annotation, 'status' | 'working'>>
   ): Annotation | null {
     const data = this.read();
     const idx = data.annotations.findIndex((a) => a.id === id);
@@ -96,6 +97,9 @@ export class AnnotationService {
     const annotation = data.annotations[idx];
     if (updates.status !== undefined) {
       annotation.status = updates.status;
+    }
+    if (updates.working !== undefined) {
+      annotation.working = updates.working;
     }
     annotation.updatedAt = new Date().toISOString();
     data.annotations[idx] = annotation;

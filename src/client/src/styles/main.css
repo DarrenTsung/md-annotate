@@ -305,6 +305,17 @@ body {
   text-underline-offset: 2px;
 }
 
+/* Working highlight pulse */
+@keyframes highlight-working {
+  0%, 100% { background-color: var(--highlight-bg); }
+  50% { background-color: #e8d5ff; }
+}
+
+.annotation-highlight.working {
+  animation: highlight-working 2s ease-in-out infinite;
+  border-bottom-color: var(--claude-purple);
+}
+
 @keyframes highlight-blink {
   0%, 100% { background-color: var(--highlight-active); }
   25% { background-color: #ffd700; }
