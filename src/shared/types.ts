@@ -12,7 +12,7 @@ export interface Annotation {
   contextBefore: string;
   contextAfter: string;
   comments: Comment[];
-  status: 'open' | 'resolved';
+  status: 'open' | 'resolved' | 'deleted';
   sentToClaude: boolean;
   working: boolean;
   createdAt: string;

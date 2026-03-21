@@ -15,7 +15,7 @@ interface HighlightRange {
   startOffset: number;
   endOffset: number;
   selectedText?: string;
-  status: 'open' | 'resolved';
+  status: string;
   working?: boolean;
 }
 

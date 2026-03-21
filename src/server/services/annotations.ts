@@ -48,7 +48,7 @@ export class AnnotationService {
   }
 
   getAll(): Annotation[] {
-    return this.read().annotations;
+    return this.read().annotations.filter((a) => a.status !== 'deleted');
   }
 
   getById(id: string): Annotation | undefined {
@@ -109,9 +109,10 @@ export class AnnotationService {
 
   delete(id: string): boolean {
     const data = this.read();
-    const before = data.annotations.length;
-    data.annotations = data.annotations.filter((a) => a.id !== id);
-    if (data.annotations.length === before) return false;
+    const idx = data.annotations.findIndex((a) => a.id === id);
+    if (idx === -1) return false;
+    data.annotations[idx].status = 'deleted';
+    data.annotations[idx].updatedAt = new Date().toISOString();
     this.write(data);
     return true;
   }
