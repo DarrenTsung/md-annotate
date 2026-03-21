@@ -62,7 +62,7 @@ export function CommentThread({
             isResolved ? onReopen() : onResolve();
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3.5 8.5L6.5 11.5L12.5 4.5"/>
           </svg>
         </button>
