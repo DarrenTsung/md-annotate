@@ -7,6 +7,10 @@ interface SelectionPopoverProps {
   onCancel: () => void;
 }
 
+const POPOVER_HEIGHT = 200;
+const POPOVER_WIDTH = 320;
+const GAP = 8;
+
 export function SelectionPopover({
   rect,
   selectedText,
@@ -39,14 +43,18 @@ export function SelectionPopover({
     }
   }
 
-  // Position the popover below the selection, clamped to viewport
-  const top = Math.min(rect.bottom + 8, window.innerHeight - 220);
-  const left = Math.max(16, Math.min(rect.left, window.innerWidth - 336));
+  // Position below selection by default, above if not enough room below
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const placeAbove = spaceBelow < POPOVER_HEIGHT + GAP && rect.top > POPOVER_HEIGHT + GAP;
+  const top = placeAbove
+    ? rect.top + window.scrollY - POPOVER_HEIGHT - GAP
+    : rect.bottom + window.scrollY + GAP;
+  const left = Math.max(16, Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 16));
 
   return (
     <div
       className="selection-popover"
-      style={{ top, left, position: 'fixed' }}
+      style={{ top, left, position: 'absolute' }}
     >
       <div className="popover-selected-text" title={selectedText}>
         "{selectedText.length > 50 ? selectedText.slice(0, 47) + '...' : selectedText}"
