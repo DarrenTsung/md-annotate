@@ -151,10 +151,13 @@ export function createApiRouter(fileManager: FileManager): Router {
         return;
       }
 
-      // If user reply, also send to Claude
+      // If user reply, reopen if resolved and send to Claude
       if (body.author === 'user') {
         const annotation = svc.getById(req.params.id);
         if (annotation) {
+          if (annotation.status === 'resolved') {
+            svc.update(req.params.id, { status: 'open' });
+          }
           const bridge = fileManager.getItermBridge();
           for (const sid of fileManager.getSessions(filePath)) {
             bridge.queueAnnotation(sid, annotation, filePath, svc.getSidecarPath());
@@ -324,6 +327,52 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
   });
 
+  // POST /api/next?session=... — CLI: md-annotate next
+  // Returns the oldest pending annotation and marks it working.
+  router.post('/next', (req, res) => {
+    const session = typeof req.query.session === 'string' ? req.query.session : null;
+    if (!session) {
+      res.status(400).json({ error: 'session query parameter is required' });
+      return;
+    }
+
+    const filePath = fileManager.getFileForSession(session);
+    if (!filePath) {
+      res.status(404).json({ error: 'No file associated with this session' });
+      return;
+    }
+
+    try {
+      const svc = fileManager.getAnnotationService(filePath);
+      const pending = svc.getAll().filter((a) => {
+        if (a.status !== 'open') return false;
+        if (a.working) return false;
+        // Pending if the last comment is from a user (needs Claude's response)
+        const last = a.comments[a.comments.length - 1];
+        return last && last.author === 'user';
+      });
+
+      if (pending.length === 0) {
+        res.json({ filePath, annotation: null, remaining: 0 });
+        return;
+      }
+
+      // Oldest first
+      pending.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const next = pending[0];
+
+      svc.update(next.id, { working: true });
+      fileManager.broadcastAnnotations(filePath);
+
+      // Re-read after update to get fresh data
+      const updated = svc.getById(next.id)!;
+      res.json({ filePath, annotation: updated, remaining: pending.length - 1 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
   // GET /api/status?session=... — CLI: md-annotate status
   router.get('/status', (req, res) => {
     const session = typeof req.query.session === 'string' ? req.query.session : null;
@@ -342,10 +391,11 @@ export function createApiRouter(fileManager: FileManager): Router {
       const svc = fileManager.getAnnotationService(filePath);
       const annotations = svc.getAll().filter((a) => {
         if (a.status !== 'open') return false;
-        // Include if no Claude reply yet
-        return !a.comments.some((c) => c.author === 'claude');
+        // Pending if the last comment is from a user (needs Claude's response)
+        const last = a.comments[a.comments.length - 1];
+        return last && last.author === 'user';
       });
-      res.json(annotations);
+      res.json({ filePath, annotations });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: message });

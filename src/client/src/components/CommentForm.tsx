@@ -24,6 +24,7 @@ export function CommentForm({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    e.stopPropagation();
     if (text.trim()) {
       onSubmit(text.trim());
       setText('');
@@ -44,7 +45,7 @@ export function CommentForm({
   }
 
   return (
-    <form className="comment-form" onSubmit={handleSubmit}>
+    <form className="comment-form" onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()}>
       <textarea
         ref={textareaRef}
         className="comment-textarea"

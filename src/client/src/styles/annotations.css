@@ -93,35 +93,25 @@
   padding-left: 9px;
 }
 
-.comment-thread.resolved .thread-selected-text {
+.comment-thread.resolved .comment-quote {
   text-decoration: line-through;
 }
 
-.thread-header {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-bottom: 4px;
-}
 
-.thread-selected-text {
-  font-size: 10.5px;
+.comment-quote {
+  margin: 2px 0 4px;
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid var(--border);
+  font-size: 11px;
   color: var(--text-muted);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
   font-style: italic;
-  text-align: left;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: inherit;
+  cursor: pointer;
+  line-height: 1.4;
 }
 
-.thread-selected-text:hover {
+.comment-quote:hover {
   color: var(--primary);
+  border-left-color: var(--primary);
 }
 
 @keyframes badge-in {
@@ -148,15 +138,12 @@
   border-left-color: var(--claude-purple);
 }
 
-.sent-badge {
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--claude-bg);
-  color: var(--claude-purple);
-  font-weight: 600;
+.pending-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-muted);
   flex-shrink: 0;
-  animation: badge-in 0.2s ease-out;
 }
 
 /* Individual comments in thread */

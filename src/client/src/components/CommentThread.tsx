@@ -46,28 +46,8 @@ export function CommentThread({
       data-annotation-id={annotation.id}
       onClick={onActivate}
     >
-      <div className="thread-header">
-        <button
-          className="thread-selected-text"
-          onClick={scrollToHighlight}
-          title="Scroll to highlight"
-        >
-          "{annotation.selectedText.length > 40
-            ? annotation.selectedText.slice(0, 37) + '...'
-            : annotation.selectedText}"
-        </button>
-        {annotation.working && (
-          <span className="working-dot" title="Claude is working on this" />
-        )}
-        {annotation.sentToClaude && !annotation.working && (
-          <span className="sent-badge" title="Sent to Claude">
-            sent
-          </span>
-        )}
-      </div>
-
       <div className="thread-comments">
-        {annotation.comments.map((comment) => (
+        {annotation.comments.map((comment, index) => (
           <div
             key={comment.id}
             className={`thread-comment ${comment.author === 'claude' ? 'claude-comment' : 'user-comment'}`}
@@ -79,7 +59,24 @@ export function CommentThread({
               <span className="comment-time">
                 {formatTime(comment.createdAt)}
               </span>
+              {index === 0 && annotation.working && (
+                <span className="working-dot" title="Claude is working on this" />
+              )}
+              {index === 0 && !annotation.working && isPending(annotation) && (
+                <span className="pending-dot" title="Waiting for Claude" />
+              )}
             </div>
+            {index === 0 && (
+              <blockquote
+                className="comment-quote"
+                onClick={scrollToHighlight}
+                title="Scroll to highlight"
+              >
+                {annotation.selectedText.length > 60
+                  ? annotation.selectedText.slice(0, 57) + '...'
+                  : annotation.selectedText}
+              </blockquote>
+            )}
             <div className="comment-text">{comment.text}</div>
           </div>
         ))}
@@ -141,6 +138,12 @@ export function CommentThread({
       )}
     </div>
   );
+}
+
+function isPending(annotation: Annotation): boolean {
+  if (annotation.status !== 'open') return false;
+  const last = annotation.comments[annotation.comments.length - 1];
+  return !!last && last.author === 'user';
 }
 
 function formatTime(iso: string): string {

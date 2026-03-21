@@ -6,7 +6,7 @@ This is a test markdown file for **md-annotate**.
 
 - Inline annotations with Google Docs-style comments
 - Real-time sync via WebSocket
-- Claude Code integration via iTerm AppleScript
+- Claude Code integration via iTerm AppleScript — when you add a comment in the browser, the server sends a notification to Claude's terminal session using macOS AppleScript automation, so Claude can read and respond to your annotations without leaving the CLI
 
 ## Code Example
 
@@ -22,7 +22,7 @@ The system uses a sidecar JSON file to store annotations alongside the markdown 
 
 ### Key Design Decisions
 
-1. **Source offset mapping**: Custom markdown-it plugin adds `data-source-offset` attributes to rendered HTML, enabling precise mapping from browser selections back to raw markdown positions.
+1. **Source offset mapping**: Custom ***markdown-it plugin*** adds `data-source-offset` attributes to rendered HTML, enabling precise mapping from browser selections back to raw markdown positions.
 
 2. **Debounced Claude integration**: New annotations are batched with a 2.5-second debounce window before being sent to Claude, preventing rapid-fire prompts.
 
@@ -32,6 +32,6 @@ The system uses a sidecar JSON file to store annotations alongside the markdown 
 
 ## TODO
 
-- [ ] Add keyboard shortcuts
-- [ ] Support for images
-- [ ] Dark mode
+- [x] Add keyboard shortcuts
+- [x] Support for images
+- [x] Dark mode

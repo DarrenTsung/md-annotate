@@ -85,36 +85,12 @@ export class ItermBridge {
   private formatMessage(
     annotations: Annotation[],
     filePath: string,
-    sidecarPath: string
+    _sidecarPath: string
   ): string {
-    const lines: string[] = [
-      `[md-annotate] Review comments on ${filePath.split('/').pop()}`,
-      `Annotations file: ${sidecarPath}`,
-      '',
-    ];
-
-    for (const annotation of annotations) {
-      const comment = annotation.comments[annotation.comments.length - 1];
-      if (!comment) continue;
-
-      const selected =
-        annotation.selectedText.length > 60
-          ? annotation.selectedText.slice(0, 57) + '...'
-          : annotation.selectedText;
-
-      lines.push(
-        `Line offset ${annotation.startOffset} (id: "${annotation.id}", selected: "${selected}"):`
-      );
-      lines.push(`> ${comment.text}`);
-      lines.push('');
-    }
-
-    lines.push('To respond, run:');
-    lines.push('  md-annotate reply <annotation-id> "your response"');
-    lines.push('To resolve:');
-    lines.push('  md-annotate reply --resolve <annotation-id> "your response"');
-
-    return lines.join('\n');
+    const fileName = filePath.split('/').pop();
+    const count = annotations.length;
+    const noun = count === 1 ? 'comment' : 'comments';
+    return `[md-annotate] ${count} new review ${noun} on ${fileName} — run \`md-annotate next\` to review`;
   }
 
   private sendToIterm(uuid: string, message: string): void {

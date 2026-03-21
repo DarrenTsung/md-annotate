@@ -21,7 +21,8 @@ async function cliReply(): Promise<void> {
   }
 
   const [annotationId, ...textParts] = positional;
-  const text = textParts.join(' ');
+  // Strip shell backslash escapes (e.g., \! → !) that some environments inject
+  const text = textParts.join(' ').replace(/\\([!$`"\\])/g, '$1');
   const session = process.env.ITERM_SESSION_ID;
   if (!session) {
     console.error('Error: $ITERM_SESSION_ID is not set');
@@ -132,6 +133,51 @@ async function cliEnd(): Promise<void> {
   console.log(`${annotationId} — stopped working`);
 }
 
+async function cliNext(): Promise<void> {
+  const session = process.env.ITERM_SESSION_ID;
+  if (!session) {
+    console.error('Error: $ITERM_SESSION_ID is not set');
+    process.exit(1);
+  }
+
+  const url = `http://localhost:${PORT}/api/next?session=${encodeURIComponent(session)}`;
+  const res = await fetch(url, { method: 'POST' });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    console.error(`Error: ${(err as { error: string }).error}`);
+    process.exit(1);
+  }
+
+  const data = (await res.json()) as {
+    filePath: string;
+    annotation: {
+      id: string;
+      selectedText: string;
+      startOffset: number;
+      endOffset: number;
+      comments: Array<{ author: string; text: string; createdAt: string }>;
+      createdAt: string;
+    } | null;
+    remaining: number;
+  };
+
+  if (!data.annotation) {
+    console.log('No pending annotations.');
+    return;
+  }
+
+  const a = data.annotation;
+  console.log(`File: ${data.filePath}`);
+  console.log(`ID: ${a.id}`);
+  console.log(`Selected text: "${a.selectedText}"`);
+  console.log(`Offset: ${a.startOffset}-${a.endOffset}`);
+  for (const c of a.comments) {
+    console.log(`  ${c.author}: ${c.text}`);
+  }
+  console.log(`Remaining: ${data.remaining}`);
+}
+
 async function cliStatus(): Promise<void> {
   const session = process.env.ITERM_SESSION_ID;
   if (!session) {
@@ -148,28 +194,34 @@ async function cliStatus(): Promise<void> {
     process.exit(1);
   }
 
-  const annotations = (await res.json()) as Array<{
-    id: string;
-    selectedText: string;
-    comments: Array<{ author: string; text: string; createdAt: string }>;
-    createdAt: string;
-  }>;
+  const data = (await res.json()) as {
+    filePath: string;
+    annotations: Array<{
+      id: string;
+      selectedText: string;
+      startOffset: number;
+      endOffset: number;
+      comments: Array<{ author: string; text: string; createdAt: string }>;
+      working: boolean;
+      createdAt: string;
+    }>;
+  };
 
-  if (annotations.length === 0) {
+  if (data.annotations.length === 0) {
     console.log('No pending annotations.');
     return;
   }
 
-  for (const a of annotations) {
+  console.log(`File: ${data.filePath}`);
+  console.log(`${data.annotations.length} pending annotation(s):\n`);
+  for (const a of data.annotations) {
     const lastUserComment = [...a.comments].reverse().find((c) => c.author === 'user');
-    const text = a.selectedText.length > 30
-      ? a.selectedText.slice(0, 27) + '...'
+    const text = a.selectedText.length > 40
+      ? a.selectedText.slice(0, 37) + '...'
       : a.selectedText;
     const ago = formatRelativeTime(lastUserComment?.createdAt || a.createdAt);
-    const comment = lastUserComment
-      ? `You: "${lastUserComment.text.length > 40 ? lastUserComment.text.slice(0, 37) + '...' : lastUserComment.text}"`
-      : '(no comment)';
-    console.log(`${a.id}  "${text}"  — ${comment} (${ago})`);
+    const working = a.working ? ' [working]' : '';
+    console.log(`  ${a.id}  "${text}"${working} (${ago})`);
   }
 }
 
@@ -181,7 +233,7 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(diff / 86400000)}d ago`;
 }
 
-function cliOpen(): void {
+async function cliOpen(): Promise<void> {
   const fileArg = args[1];
   if (!fileArg) {
     console.error('Usage: md-annotate open <file.md>');
@@ -198,6 +250,13 @@ function cliOpen(): void {
     process.exit(1);
   }
 
+  try {
+    await fetch(`http://localhost:${PORT}/api/file?filePath=${encodeURIComponent(filePath)}`);
+  } catch {
+    console.error(`Error: daemon is not running on port ${PORT}. Start it with: md-annotate`);
+    process.exit(1);
+  }
+
   const session = process.env.ITERM_SESSION_ID || '';
   const params = new URLSearchParams({ file: filePath });
   if (session) params.set('session', session);
@@ -207,7 +266,10 @@ function cliOpen(): void {
 }
 
 if (args[0] === 'open') {
-  cliOpen();
+  cliOpen().catch((err) => {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  });
 } else if (args[0] === 'reply') {
   cliReply().catch((err) => {
     console.error(`Error: ${err.message}`);
@@ -228,6 +290,11 @@ if (args[0] === 'open') {
     console.error(`Error: ${err.message}`);
     process.exit(1);
   });
+} else if (args[0] === 'next') {
+  cliNext().catch((err) => {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  });
 } else if (args[0] === 'status') {
   cliStatus().catch((err) => {
     console.error(`Error: ${err.message}`);
@@ -245,9 +312,10 @@ Subcommands:
   md-annotate open <file.md>                   Open a file in the browser
   md-annotate reply [--resolve] <id> "text"   Reply to an annotation
   md-annotate resolve <id>                     Resolve an annotation
+  md-annotate next                              Get next pending annotation (marks working)
   md-annotate start <id>                       Mark annotation as being worked on
   md-annotate end <id>                         Clear working state
-  md-annotate status                           Show pending annotations needing replies
+  md-annotate status                           Show pending annotation summary
 
 Daemon mode:
   md-annotate              Start the daemon (no file required)
