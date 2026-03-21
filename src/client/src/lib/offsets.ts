@@ -75,8 +75,21 @@ function fuzzyFindInSource(
   );
   const searchRegion = rawMarkdown.slice(searchStart, searchEnd);
 
-  // Try exact match first
-  const exactIdx = searchRegion.indexOf(selectedText);
+  // Try exact match — find the occurrence closest to approximateStart
+  let exactIdx = -1;
+  let bestDistance = Infinity;
+  let searchFrom = 0;
+  while (true) {
+    const idx = searchRegion.indexOf(selectedText, searchFrom);
+    if (idx === -1) break;
+    const absPos = searchStart + idx;
+    const distance = Math.abs(absPos - approximateStart);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      exactIdx = idx;
+    }
+    searchFrom = idx + 1;
+  }
   if (exactIdx !== -1) {
     const start = searchStart + exactIdx;
     return { start, end: start + selectedText.length };
