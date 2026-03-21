@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 
 interface SelectionPopoverProps {
   rect: DOMRect;
@@ -47,8 +47,8 @@ export function SelectionPopover({
 
   // Position below selection by default, above if not enough room below.
   // Use the popover's offset parent to convert viewport coords to local coords.
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  useEffect(() => {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
     const el = popoverRef.current;
     if (!el) return;
     const parent = el.offsetParent as HTMLElement | null;
@@ -69,7 +69,12 @@ export function SelectionPopover({
     <div
       ref={popoverRef}
       className="selection-popover"
-      style={{ top: pos.top, left: pos.left, position: 'absolute' }}
+      style={{
+        top: pos?.top ?? 0,
+        left: pos?.left ?? 0,
+        position: 'absolute',
+        visibility: pos ? 'visible' : 'hidden',
+      }}
     >
       <div className="popover-selected-text" title={selectedText}>
         "{selectedText.length > 50 ? selectedText.slice(0, 47) + '...' : selectedText}"

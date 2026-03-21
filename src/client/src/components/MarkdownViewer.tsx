@@ -35,7 +35,9 @@ export function MarkdownViewer({
     const container = containerRef.current;
     if (!container) return;
 
+    const scrollY = window.scrollY;
     const cleanup = applyHighlights(container, annotations);
+    window.scrollTo(0, scrollY);
     return cleanup;
   }, [annotations, renderedHtml]);
 
@@ -82,16 +84,20 @@ export function MarkdownViewer({
   }, [activeAnnotationId]);
 
   // Highlight the pending selection while the popover is open
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container || !selection) return;
 
-    return applyPendingHighlight(
+    const scrollY = window.scrollY;
+    const cleanup = applyPendingHighlight(
       container,
       selection.offset.startOffset,
       selection.offset.endOffset,
       selection.offset.selectedText
     );
+    // DOM manipulation can shift scroll; restore it
+    window.scrollTo(0, scrollY);
+    return cleanup;
   }, [selection]);
 
   // Cmd+C copies the selected text and dismisses the popover
@@ -143,8 +149,13 @@ export function MarkdownViewer({
 
   function handleSubmitComment(comment: string) {
     if (selection) {
+      const scrollY = window.scrollY;
       onCreateAnnotation(selection.offset, comment);
       clearSelection();
+      // Restore scroll after React re-renders to prevent viewport jump
+      requestAnimationFrame(() => {
+        window.scrollTo(0, scrollY);
+      });
     }
   }
 
