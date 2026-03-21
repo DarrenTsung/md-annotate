@@ -170,12 +170,27 @@ async function cliNext(): Promise<void> {
   const a = data.annotation;
   console.log(`File: ${data.filePath}`);
   console.log(`ID: ${a.id}`);
-  console.log(`Selected text: "${a.selectedText}"`);
-  console.log(`Offset: ${a.startOffset}-${a.endOffset}`);
+
+  // Show context lines around the selection
+  const content = fs.readFileSync(data.filePath, 'utf-8');
+  const lines = content.split('\n');
+  const beforeContent = content.slice(0, a.startOffset);
+  const startLine = beforeContent.split('\n').length - 1;
+  const selectedLines = a.selectedText.split('\n').length;
+  const endLine = startLine + selectedLines - 1;
+  const ctxStart = Math.max(0, startLine - 3);
+  const ctxEnd = Math.min(lines.length - 1, endLine + 3);
+  console.log(`\nContext (lines ${ctxStart + 1}-${ctxEnd + 1}):`);
+  for (let i = ctxStart; i <= ctxEnd; i++) {
+    const marker = (i >= startLine && i <= endLine) ? '>' : ' ';
+    console.log(`  ${marker} ${lines[i]}`);
+  }
+
+  console.log(`\nComments:`);
   for (const c of a.comments) {
     console.log(`  ${c.author}: ${c.text}`);
   }
-  console.log(`Remaining: ${data.remaining}`);
+  console.log(`\nRemaining: ${data.remaining}`);
 }
 
 async function cliStatus(): Promise<void> {
