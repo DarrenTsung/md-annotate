@@ -145,29 +145,21 @@ function highlightTextInElement(
   let matchStart: number;
   let matchEnd: number;
 
+  const blockEnd = parseInt(
+    element.getAttribute('data-source-end') || String(blockStartOffset + fullText.length),
+    10
+  );
+
   if (range.selectedText && range.selectedText.length > 0) {
     // Search for the selectedText in the block's rendered text
     const occurrences = findAllOccurrences(fullText, range.selectedText);
 
-    if (occurrences.length === 0) {
-      // Try whitespace-normalized match
-      const normalized = range.selectedText.replace(/\s+/g, ' ');
-      const normalizedFull = fullText.replace(/\s+/g, ' ');
-      const idx = normalizedFull.indexOf(normalized);
-      if (idx === -1) return;
-      // Map back to original positions approximately
-      matchStart = idx;
-      matchEnd = idx + normalized.length;
-    } else if (occurrences.length === 1) {
+    if (occurrences.length === 1) {
       matchStart = occurrences[0];
       matchEnd = matchStart + range.selectedText.length;
-    } else {
+    } else if (occurrences.length > 1) {
       // Multiple occurrences — pick the one closest to the expected
       // position based on the raw offset's proportion within the block
-      const blockEnd = parseInt(
-        element.getAttribute('data-source-end') || String(blockStartOffset + fullText.length),
-        10
-      );
       const rawBlockLength = blockEnd - blockStartOffset;
       const relativePos = rawBlockLength > 0
         ? (range.startOffset - blockStartOffset) / rawBlockLength
@@ -185,6 +177,19 @@ function highlightTextInElement(
       }
       matchStart = bestIdx;
       matchEnd = matchStart + range.selectedText.length;
+    } else {
+      // No exact match — selection may span multiple blocks.
+      // Highlight the portion of this block that overlaps the selection's
+      // raw offset range, using offset-based positioning as fallback.
+      const overlapStart = Math.max(range.startOffset, blockStartOffset);
+      const overlapEnd = Math.min(range.endOffset, blockEnd);
+      if (overlapStart >= overlapEnd) return;
+
+      // Map raw offsets to rendered text positions proportionally
+      const rawBlockLength = blockEnd - blockStartOffset;
+      const ratio = rawBlockLength > 0 ? fullText.length / rawBlockLength : 1;
+      matchStart = Math.round((overlapStart - blockStartOffset) * ratio);
+      matchEnd = Math.round((overlapEnd - blockStartOffset) * ratio);
     }
   } else {
     // No selectedText available — fall back to offset-based positioning
