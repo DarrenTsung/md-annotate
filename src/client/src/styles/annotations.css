@@ -88,23 +88,24 @@
 .thread-delete {
   position: absolute;
   top: 6px;
-  right: 6px;
+  right: 12px;
   background: none;
   border: none;
   padding: 3px;
   border-radius: 3px;
   color: var(--text-muted);
   cursor: pointer;
-  opacity: 0;
+  opacity: 0.25;
   transition: opacity 0.15s ease, color 0.15s ease;
 }
 
 .comment-thread:hover .thread-delete,
 .comment-thread.active .thread-delete {
-  opacity: 1;
+  opacity: 0.5;
 }
 
 .thread-delete:hover {
+  opacity: 1;
   color: var(--danger);
   background: #ffeef0;
 }
