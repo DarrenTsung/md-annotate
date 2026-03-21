@@ -53,18 +53,32 @@ export function CommentThread({
         }
       }}
     >
-      <button
-        className="thread-delete"
-        title="Delete"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-      >
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m6.53-.528a.5.5 0 0 0-.528.47l-.5 8.5a.5.5 0 0 0 .998.058l.5-8.5a.5.5 0 0 0-.47-.528M8 4.5a.5.5 0 0 0-.5.5v8.5a.5.5 0 0 0 1 0V5a.5.5 0 0 0-.5-.5"/>
-        </svg>
-      </button>
+      <div className="thread-icons">
+        <button
+          className={`thread-icon-btn ${isResolved ? 'thread-unresolve' : 'thread-resolve'}`}
+          title={isResolved ? 'Reopen' : 'Resolve'}
+          onClick={(e) => {
+            e.stopPropagation();
+            isResolved ? onReopen() : onResolve();
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0"/>
+          </svg>
+        </button>
+        <button
+          className="thread-icon-btn thread-delete"
+          title="Delete"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m6.53-.528a.5.5 0 0 0-.528.47l-.5 8.5a.5.5 0 0 0 .998.058l.5-8.5a.5.5 0 0 0-.47-.528M8 4.5a.5.5 0 0 0-.5.5v8.5a.5.5 0 0 0 1 0V5a.5.5 0 0 0-.5-.5"/>
+          </svg>
+        </button>
+      </div>
       <div className="thread-comments">
         {annotation.comments.map((comment, index) => (
           <div
@@ -103,37 +117,11 @@ export function CommentThread({
 
       {isActive && (
         <div className="thread-actions">
-          {!showReply && (
-            <>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowReply(true);
-                }}
-              >
-                Reply
-              </button>
-              {!isResolved && (
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onResolve();
-                  }}
-                >
-                  Resolve
-                </button>
-              )}
-            </>
-          )}
-          {showReply && (
-            <CommentForm
-              onSubmit={handleReply}
-              onCancel={() => setShowReply(false)}
-              autoFocus
-            />
-          )}
+          <CommentForm
+            onSubmit={handleReply}
+            onCancel={() => setShowReply(false)}
+            autoFocus
+          />
         </div>
       )}
     </div>

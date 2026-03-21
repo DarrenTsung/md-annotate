@@ -85,10 +85,15 @@
   transition: background-color 0.15s ease, border-color 0.15s ease, padding-left 0.15s ease;
 }
 
-.thread-delete {
+.thread-icons {
   position: absolute;
   top: 6px;
-  right: 12px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.thread-icon-btn {
   background: none;
   border: none;
   padding: 3px;
@@ -99,9 +104,25 @@
   transition: opacity 0.15s ease, color 0.15s ease;
 }
 
-.comment-thread:hover .thread-delete,
-.comment-thread.active .thread-delete {
+.comment-thread:hover .thread-icon-btn,
+.comment-thread.active .thread-icon-btn {
   opacity: 0.5;
+}
+
+.thread-resolve:hover {
+  opacity: 1;
+  color: var(--success);
+  background: #e6f6e6;
+}
+
+.thread-unresolve {
+  opacity: 0.5;
+  color: var(--success);
+}
+
+.thread-unresolve:hover {
+  opacity: 1;
+  color: var(--text-muted);
 }
 
 .thread-delete:hover {
