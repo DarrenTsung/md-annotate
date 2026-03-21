@@ -64,7 +64,11 @@ export function MarkdownViewer({
     );
     if (!mark) return;
 
-    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Only scroll if the highlight isn't already visible
+    const markRect = mark.getBoundingClientRect();
+    if (markRect.top < 0 || markRect.bottom > window.innerHeight) {
+      mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     mark.classList.add('highlight-blink');
 
     const timer = setTimeout(() => {
