@@ -44,7 +44,14 @@ export function CommentThread({
     <div
       className={`comment-thread ${isActive ? 'active' : ''} ${isResolved ? 'resolved' : ''} ${annotation.working ? 'working' : ''}`}
       data-annotation-id={annotation.id}
+      tabIndex={0}
       onClick={onActivate}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && isActive && !showReply) {
+          e.preventDefault();
+          setShowReply(true);
+        }
+      }}
     >
       <div className="thread-comments">
         {annotation.comments.map((comment, index) => (
