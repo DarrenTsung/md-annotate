@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it';
+import taskLists from 'markdown-it-task-lists';
 import type Token from 'markdown-it/lib/token.mjs';
 import hljs from 'highlight.js';
 
@@ -57,6 +58,7 @@ function getMd(): MarkdownIt {
       },
     });
     mdInstance.use(sourceOffsetPlugin);
+    mdInstance.use(taskLists, { enabled: false, label: true, labelAfter: true });
 
     // Add id slugs to headings for anchor links
     const defaultHeadingOpen = mdInstance.renderer.rules.heading_open ||
@@ -105,5 +107,12 @@ function getMd(): MarkdownIt {
 
 export function renderMarkdown(source: string): string {
   const md = getMd();
-  return md.render(source);
+  let html = md.render(source);
+  // Trim the leading space inside task list labels so strikethrough
+  // doesn't extend past the text start
+  html = html.replace(
+    /(<label class="task-list-item-label"[^>]*>) /g,
+    '$1'
+  );
+  return html;
 }

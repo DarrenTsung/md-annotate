@@ -203,6 +203,64 @@ body {
   margin: 0.15em 0;
 }
 
+/* Task lists */
+.markdown-viewer ul.contains-task-list {
+  list-style: none;
+  padding-left: 0.5em;
+}
+
+.markdown-viewer li.task-list-item {
+  margin: 0.15em 0;
+}
+
+.markdown-viewer li.task-list-item > label {
+  display: inline;
+}
+
+/* Nested task lists */
+.markdown-viewer li.task-list-item > ul.contains-task-list {
+  margin-top: 0.15em;
+  margin-bottom: 0;
+}
+
+.markdown-viewer .task-list-item-checkbox {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  flex-shrink: 0;
+  position: relative;
+  top: 2px;
+  cursor: default;
+}
+
+.markdown-viewer .task-list-item-checkbox:checked {
+  background: #8b95a5;
+  border-color: #8b95a5;
+}
+
+.markdown-viewer .task-list-item-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.markdown-viewer .task-list-item-label {
+  margin-left: 0.4em;
+}
+
+.markdown-viewer .task-list-item-checkbox:checked + .task-list-item-label {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
 .markdown-viewer code {
   background: var(--bg-secondary);
   padding: 0.15em 0.35em;

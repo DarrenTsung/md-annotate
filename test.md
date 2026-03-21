@@ -35,3 +35,20 @@ The system uses a sidecar JSON file to store annotations alongside the markdown 
 - [x] Add keyboard shortcuts
 - [x] Support for images
 - [x] Dark mode
+- [ ] Multi-file support
+  - [x] URL-driven routing
+  - [x] FileManager per-file state
+  - [ ] File picker sidebar
+- [ ] Annotation export
+  - [ ] Export as markdown comments
+  - [ ] Export as JSON
+- [ ] Polish
+  - [x] Re-anchoring after edits
+  - [ ] Undo/redo support
+  - [ ] Annotation search
+
+### Empty list
+
+- [ ] &nbsp;
+- [ ] &nbsp;
+- [ ] &nbsp;
