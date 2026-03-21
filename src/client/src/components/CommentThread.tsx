@@ -95,17 +95,7 @@ export function CommentThread({
               >
                 Reply
               </button>
-              {isResolved ? (
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onReopen();
-                  }}
-                >
-                  Reopen
-                </button>
-              ) : (
+              {!isResolved && (
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={(e) => {
