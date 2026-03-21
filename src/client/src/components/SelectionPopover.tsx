@@ -43,18 +43,33 @@ export function SelectionPopover({
     }
   }
 
-  // Position below selection by default, above if not enough room below
-  const spaceBelow = window.innerHeight - rect.bottom;
-  const placeAbove = spaceBelow < POPOVER_HEIGHT + GAP && rect.top > POPOVER_HEIGHT + GAP;
-  const top = placeAbove
-    ? rect.top + window.scrollY - POPOVER_HEIGHT - GAP
-    : rect.bottom + window.scrollY + GAP;
-  const left = Math.max(16, Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 16));
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Position below selection by default, above if not enough room below.
+  // Use the popover's offset parent to convert viewport coords to local coords.
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  useEffect(() => {
+    const el = popoverRef.current;
+    if (!el) return;
+    const parent = el.offsetParent as HTMLElement | null;
+    const parentRect = parent?.getBoundingClientRect() ?? { top: 0, left: 0 };
+
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const placeAbove = spaceBelow < POPOVER_HEIGHT + GAP && rect.top > POPOVER_HEIGHT + GAP;
+
+    const top = placeAbove
+      ? rect.top - parentRect.top - POPOVER_HEIGHT - GAP
+      : rect.bottom - parentRect.top + GAP;
+    const left = Math.max(0, rect.left - parentRect.left);
+
+    setPos({ top, left: Math.min(left, (parent?.clientWidth ?? window.innerWidth) - POPOVER_WIDTH) });
+  }, [rect]);
 
   return (
     <div
+      ref={popoverRef}
       className="selection-popover"
-      style={{ top, left, position: 'absolute' }}
+      style={{ top: pos.top, left: pos.left, position: 'absolute' }}
     >
       <div className="popover-selected-text" title={selectedText}>
         "{selectedText.length > 50 ? selectedText.slice(0, 47) + '...' : selectedText}"
