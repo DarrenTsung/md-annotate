@@ -21,6 +21,7 @@ interface UseAnnotationsResult {
   updateAnnotation: (id: string, status: 'open' | 'resolved') => Promise<void>;
   deleteAnnotation: (id: string) => Promise<void>;
   addComment: (annotationId: string, text: string) => Promise<void>;
+  removeAction: (action: string, sourceStart: number, sourceEnd: number) => Promise<void>;
   activeAnnotationId: string | null;
   setActiveAnnotationId: (id: string | null) => void;
 }
@@ -149,6 +150,13 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
     [api]
   );
 
+  const removeAction = useCallback(
+    async (action: string, sourceStart: number, sourceEnd: number): Promise<void> => {
+      await api.removeAction(action, sourceStart, sourceEnd);
+    },
+    [api]
+  );
+
   return {
     annotations,
     fileData,
@@ -158,6 +166,7 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
     updateAnnotation,
     deleteAnnotation,
     addComment,
+    removeAction,
     activeAnnotationId,
     setActiveAnnotationId,
   };

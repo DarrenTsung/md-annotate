@@ -131,8 +131,16 @@ function highlightTextInElement(
   blockStartOffset: number,
   marks: HTMLElement[]
 ): void {
-  // Collect all text nodes and build the full rendered text
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  // Collect all text nodes and build the full rendered text.
+  // Skip text inside .action-buttons so highlights don't cover action buttons.
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (node.parentElement?.closest('.action-buttons')) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
   const textNodes: Text[] = [];
   let fullText = '';
   let node: Text | null;

@@ -4,6 +4,7 @@ import { Toolbar } from './components/Toolbar.js';
 import { MarkdownViewer } from './components/MarkdownViewer.js';
 import { CommentSidebar } from './components/CommentSidebar.js';
 import type { SourceOffset } from './lib/offsets.js';
+import { getAction } from '@shared/actions.js';
 
 function LandingPage() {
   return (
@@ -43,6 +44,7 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
     updateAnnotation,
     deleteAnnotation,
     addComment,
+    removeAction,
     activeAnnotationId,
     setActiveAnnotationId,
   } = useAnnotations({ filePath, session });
@@ -73,6 +75,29 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
     [setActiveAnnotationId]
   );
 
+  const handleActionButtonClick = useCallback(
+    async (action: string, sourceStart: number, sourceEnd: number, selectedText: string) => {
+      if (!fileData) return;
+      const raw = fileData.rawMarkdown;
+      const contextBefore = raw.slice(Math.max(0, sourceStart - 30), sourceStart);
+      const contextAfter = raw.slice(sourceEnd, sourceEnd + 30);
+      const { commentText } = getAction(action);
+      const annotation = await createAnnotation({
+        selectedText,
+        startOffset: sourceStart,
+        endOffset: sourceEnd,
+        contextBefore,
+        contextAfter,
+        commentText,
+      });
+      setActiveAnnotationId(annotation.id);
+      // Remove the clicked action from the markdown file (fire and forget;
+      // the file watcher will re-render with the updated buttons)
+      removeAction(action, sourceStart, sourceEnd);
+    },
+    [fileData, createAnnotation, setActiveAnnotationId, removeAction]
+  );
+
   if (loading) {
     return (
       <div className="loading">
@@ -97,6 +122,7 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
           activeAnnotationId={activeAnnotationId}
           onCreateAnnotation={handleCreateAnnotation}
           onHighlightClick={handleHighlightClick}
+          onActionButtonClick={handleActionButtonClick}
         />
         <CommentSidebar
           annotations={annotations}

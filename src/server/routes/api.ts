@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import fs from 'node:fs';
 import type {
   CreateAnnotationRequest,
   AddCommentRequest,
@@ -396,6 +397,61 @@ export function createApiRouter(fileManager: FileManager): Router {
         return last && last.author === 'user';
       });
       res.json({ filePath, annotations });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/remove-action?filePath=...
+  // Removes a single action from an <!-- @actions: ... --> comment in the markdown file.
+  // If it was the last action, removes the entire comment.
+  router.post('/remove-action', (req, res) => {
+    const filePath = getFilePath(req);
+    if (!filePath) {
+      res.status(400).json({ error: 'filePath query parameter is required' });
+      return;
+    }
+
+    const { action, sourceStart, sourceEnd } = req.body as {
+      action: string;
+      sourceStart: number;
+      sourceEnd: number;
+    };
+    if (!action || sourceStart == null || sourceEnd == null) {
+      res.status(400).json({ error: 'action, sourceStart, and sourceEnd are required' });
+      return;
+    }
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const block = content.slice(sourceStart, sourceEnd);
+
+      // Find the @actions comment in this block
+      const commentRe = /<!--\s*@actions:\s*(.+?)\s*-->/;
+      const match = commentRe.exec(block);
+      if (!match) {
+        res.json({ modified: false });
+        return;
+      }
+
+      const actions = match[1].split(',').map((a) => a.trim()).filter(Boolean);
+      const remaining = actions.filter((a) => {
+        const clean = a.replace(/^["']|["']$/g, '');
+        return clean !== action;
+      });
+
+      let replacement: string;
+      if (remaining.length === 0) {
+        // Remove the entire comment and any leading whitespace before it
+        replacement = block.replace(/\s*<!--\s*@actions:.*?-->/, '');
+      } else {
+        replacement = block.replace(commentRe, `<!-- @actions: ${remaining.join(', ')} -->`);
+      }
+
+      const newContent = content.slice(0, sourceStart) + replacement + content.slice(sourceEnd);
+      fs.writeFileSync(filePath, newContent, 'utf-8');
+      res.json({ modified: true });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: message });

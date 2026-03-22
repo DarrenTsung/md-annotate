@@ -114,5 +114,29 @@ export function renderMarkdown(source: string): string {
     /(<label class="task-list-item-label"[^>]*>) /g,
     '$1'
   );
+  // Replace <!-- @actions: ... --> comments with action buttons.
+  // With html: true, markdown-it passes HTML comments through verbatim.
+  html = html.replace(
+    /<!--\s*@actions:\s*(.+?)\s*-->/g,
+    (_match, actionList: string) => {
+      const actions = actionList.split(',').map((a) => a.trim()).filter(Boolean);
+      const buttons = actions
+        .map((name) => {
+          // Strip surrounding quotes if present (e.g. "check types")
+          const clean = name.replace(/^["']|["']$/g, '');
+          return `<button class="action-btn" data-action="${escapeAttr(clean)}">${escapeHtml(clean)}</button>`;
+        })
+        .join('');
+      return `<span class="action-buttons">${buttons}</span>`;
+    }
+  );
   return html;
+}
+
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

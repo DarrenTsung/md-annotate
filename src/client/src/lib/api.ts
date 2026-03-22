@@ -73,6 +73,15 @@ export function createApi(filePath: string, session: string | null) {
         }
       ),
 
+    removeAction: (action: string, sourceStart: number, sourceEnd: number) =>
+      request<{ modified: boolean }>(
+        `/remove-action?${fileQuery(filePath)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ action, sourceStart, sourceEnd }),
+        }
+      ),
+
     getClaudeStatus: () =>
       request<ClaudeStatusResponse>(
         `/claude/status?${session ? `session=${encodeURIComponent(session)}` : ''}`

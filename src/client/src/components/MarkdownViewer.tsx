@@ -12,6 +12,7 @@ interface MarkdownViewerProps {
   activeAnnotationId: string | null;
   onCreateAnnotation: (offset: SourceOffset, comment: string) => void;
   onHighlightClick: (annotationId: string) => void;
+  onActionButtonClick: (action: string, sourceStart: number, sourceEnd: number, selectedText: string) => void;
 }
 
 export function MarkdownViewer({
@@ -21,6 +22,7 @@ export function MarkdownViewer({
   activeAnnotationId,
   onCreateAnnotation,
   onHighlightClick,
+  onActionButtonClick,
 }: MarkdownViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { selection, clearSelection } = useTextSelection(containerRef, rawMarkdown);
@@ -123,6 +125,26 @@ export function MarkdownViewer({
     function handleClick(e: MouseEvent) {
       const target = e.target as HTMLElement;
 
+      // Action button clicks
+      const actionBtn = target.closest('.action-btn') as HTMLElement | null;
+      if (actionBtn) {
+        e.preventDefault();
+        const action = actionBtn.getAttribute('data-action');
+        const block = actionBtn.closest('[data-source-start]') as HTMLElement | null;
+        if (action && block) {
+          const sourceStart = parseInt(block.getAttribute('data-source-start')!, 10);
+          const sourceEnd = parseInt(block.getAttribute('data-source-end')!, 10);
+          // Use rendered text content (excluding action button labels) so the
+          // highlight code can find an exact match instead of falling back to
+          // offset-ratio positioning which bleeds into adjacent elements.
+          const clone = block.cloneNode(true) as HTMLElement;
+          clone.querySelectorAll('.action-buttons').forEach((el) => el.remove());
+          const selectedText = (clone.textContent || '').trim();
+          onActionButtonClick(action, sourceStart, sourceEnd, selectedText);
+        }
+        return;
+      }
+
       // Annotation highlight clicks
       const mark = target.closest('mark[data-annotation-id]');
       if (mark) {
@@ -145,7 +167,7 @@ export function MarkdownViewer({
 
     container.addEventListener('click', handleClick);
     return () => container.removeEventListener('click', handleClick);
-  }, [onHighlightClick]);
+  }, [onHighlightClick, onActionButtonClick]);
 
   function handleSubmitComment(comment: string) {
     if (selection) {

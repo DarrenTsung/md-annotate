@@ -30,6 +30,12 @@ The system uses a sidecar JSON file to store annotations alongside the markdown 
 
 > This is a blockquote that you might want to comment on.
 
+## Review Items
+
+- The error handling silently swallows exceptions <!-- @actions: fix -->
+- Consider adding unit tests for the parser <!-- @actions: elaborate -->
+- The debounce window of 2.5s might be too long for interactive use <!-- @actions: elaborate, fix -->
+
 ## TODO
 
 - [x] Add keyboard shortcuts
