@@ -5,12 +5,14 @@ import type { WebSocket } from 'ws';
 import { renderMarkdown } from './markdown.js';
 import { AnnotationService } from './annotations.js';
 import { ItermBridge } from './iterm-bridge.js';
+import { VersionHistory } from './version-history.js';
 import type { WsMessage } from '../../shared/types.js';
 
 interface FileState {
   rawMarkdown: string;
   renderedHtml: string;
   annotationService: AnnotationService;
+  versionHistory: VersionHistory;
   mdWatcher: FSWatcher;
   sidecarWatcher: FSWatcher;
   /** iTerm session IDs associated with this file */
@@ -72,11 +74,14 @@ export class FileManager {
     const rawMarkdown = fs.readFileSync(filePath, 'utf-8');
     const renderedHtml = renderMarkdown(rawMarkdown);
     const annotationService = new AnnotationService(filePath);
+    const versionHistory = new VersionHistory(filePath);
+    versionHistory.initBaseline(rawMarkdown);
 
     state = {
       rawMarkdown,
       renderedHtml,
       annotationService,
+      versionHistory,
       mdWatcher: null!,
       sidecarWatcher: null!,
       sessions: new Set(),
@@ -94,7 +99,12 @@ export class FileManager {
 
     mdWatcher.on('change', () => {
       console.log(`[${filePath}] Markdown changed, reloading...`);
-      state!.rawMarkdown = fs.readFileSync(filePath, 'utf-8');
+      const newContent = fs.readFileSync(filePath, 'utf-8');
+
+      // Record version diff BEFORE updating state
+      const version = state!.versionHistory.recordChange(state!.rawMarkdown, newContent);
+
+      state!.rawMarkdown = newContent;
       state!.renderedHtml = renderMarkdown(state!.rawMarkdown);
 
       const { annotations, changed } = annotationService.reanchor(state!.rawMarkdown);
@@ -105,6 +115,14 @@ export class FileManager {
         rawMarkdown: state!.rawMarkdown,
         renderedHtml: state!.renderedHtml,
       });
+      if (version) {
+        this.broadcastToFile(state!, {
+          type: 'version-created',
+          filePath,
+          version,
+          lastEdited: version.timestamp,
+        });
+      }
       if (changed) {
         this.broadcastToFile(state!, {
           type: 'annotations-changed',
@@ -167,6 +185,12 @@ export class FileManager {
     const state = this.getOrCreate(filePath);
     state.clients.add(ws);
     if (session) {
+      // Remove session from any other file so getFileForSession returns the right one
+      for (const [otherPath, otherState] of this.files) {
+        if (otherPath !== filePath) {
+          otherState.sessions.delete(session);
+        }
+      }
       state.sessions.add(session);
     }
   }
@@ -190,12 +214,16 @@ export class FileManager {
 
   /**
    * Associate a session with a file (called from API routes).
+   * Removes the session from any other file first.
    */
   addSession(filePath: string, session: string): void {
-    const state = this.files.get(filePath);
-    if (state) {
-      state.sessions.add(session);
+    for (const [otherPath, otherState] of this.files) {
+      if (otherPath !== filePath) {
+        otherState.sessions.delete(session);
+      }
     }
+    const state = this.getOrCreate(filePath);
+    state.sessions.add(session);
   }
 
   /**
@@ -206,14 +234,22 @@ export class FileManager {
   }
 
   /**
-   * Get file content (markdown + HTML).
+   * Get file content (markdown + HTML + version history).
    */
-  getFileContent(filePath: string): { rawMarkdown: string; renderedHtml: string; filePath: string } {
+  getFileContent(filePath: string): {
+    rawMarkdown: string;
+    renderedHtml: string;
+    filePath: string;
+    lastEdited: string | null;
+    versions: import('../../shared/types.js').VersionEntry[];
+  } {
     const state = this.getOrCreate(filePath);
     return {
       rawMarkdown: state.rawMarkdown,
       renderedHtml: state.renderedHtml,
       filePath,
+      lastEdited: state.versionHistory.getLastEdited(),
+      versions: state.versionHistory.getVersions(),
     };
   }
 
@@ -234,6 +270,13 @@ export class FileManager {
    */
   getAnnotationService(filePath: string): AnnotationService {
     return this.getOrCreate(filePath).annotationService;
+  }
+
+  /**
+   * Get version history service for a file.
+   */
+  getVersionHistory(filePath: string): VersionHistory {
+    return this.getOrCreate(filePath).versionHistory;
   }
 
   /**

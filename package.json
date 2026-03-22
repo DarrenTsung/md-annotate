@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/diff": "^7.0.2",
     "chokidar": "^4.0.3",
+    "diff": "^8.0.3",
     "express": "^4.21.2",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.0",

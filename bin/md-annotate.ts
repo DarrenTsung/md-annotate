@@ -265,14 +265,20 @@ async function cliOpen(): Promise<void> {
     process.exit(1);
   }
 
+  const session = process.env.ITERM_SESSION_ID || '';
+
   try {
-    await fetch(`http://localhost:${PORT}/api/file?filePath=${encodeURIComponent(filePath)}`);
+    // Pre-initialize the file state and link the session immediately,
+    // so CLI commands (next, reply, etc.) work right away without
+    // waiting for the browser's WebSocket to connect.
+    const qs = new URLSearchParams({ filePath });
+    if (session) qs.set('session', session);
+    await fetch(`http://localhost:${PORT}/api/file?${qs.toString()}`);
   } catch {
     console.error(`Error: daemon is not running on port ${PORT}. Start it with: md-annotate`);
     process.exit(1);
   }
 
-  const session = process.env.ITERM_SESSION_ID || '';
   const params = new URLSearchParams({ file: filePath });
   if (session) params.set('session', session);
   const url = `http://localhost:${PORT}?${params.toString()}`;

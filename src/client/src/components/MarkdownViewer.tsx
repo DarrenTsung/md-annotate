@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
-import type { Annotation } from '@shared/types.js';
+import type { Annotation, DiffHunk } from '@shared/types.js';
 import { applyHighlights, applyPendingHighlight } from '../lib/highlight.js';
+import { applyDiffOverlay } from '../lib/diffOverlay.js';
 import { useTextSelection } from '../hooks/useTextSelection.js';
 import { SelectionPopover } from './SelectionPopover.js';
 import type { SourceOffset } from '../lib/offsets.js';
@@ -13,6 +14,8 @@ interface MarkdownViewerProps {
   onCreateAnnotation: (offset: SourceOffset, comment: string) => void;
   onHighlightClick: (annotationId: string) => void;
   onActionButtonClick: (action: string, sourceStart: number, sourceEnd: number, selectedText: string) => void;
+  shownDiffHunks: DiffHunk[] | null;
+  activeVersionId: string | null;
 }
 
 export function MarkdownViewer({
@@ -23,6 +26,8 @@ export function MarkdownViewer({
   onCreateAnnotation,
   onHighlightClick,
   onActionButtonClick,
+  shownDiffHunks,
+  activeVersionId,
 }: MarkdownViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { selection, clearSelection } = useTextSelection(containerRef, rawMarkdown);
@@ -101,6 +106,17 @@ export function MarkdownViewer({
     window.scrollTo(0, scrollY);
     return cleanup;
   }, [selection]);
+
+  // Apply diff overlay when hunks are available
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || !shownDiffHunks || shownDiffHunks.length === 0) return;
+
+    const scrollY = window.scrollY;
+    const cleanup = applyDiffOverlay(container, shownDiffHunks);
+    window.scrollTo(0, scrollY);
+    return cleanup;
+  }, [shownDiffHunks, renderedHtml]);
 
   // Cmd+C copies the selected text and dismisses the popover
   useEffect(() => {

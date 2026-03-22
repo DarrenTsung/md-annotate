@@ -47,6 +47,13 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
     removeAction,
     activeAnnotationId,
     setActiveAnnotationId,
+    versions,
+    lastEdited,
+    activeVersionId,
+    setActiveVersionId,
+    autoShowVersionId,
+    shownDiffHunks,
+    versionPreview,
   } = useAnnotations({ filePath, session });
 
   const handleCreateAnnotation = useCallback(
@@ -113,16 +120,26 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
 
   return (
     <div className="app">
-      <Toolbar filePath={fileData.filePath} claudeConnected={claudeConnected} />
+      <Toolbar
+        filePath={fileData.filePath}
+        claudeConnected={claudeConnected}
+        lastEdited={lastEdited}
+        versions={versions}
+        activeVersionId={activeVersionId}
+        autoShowVersionId={autoShowVersionId}
+        onSetActiveVersion={setActiveVersionId}
+      />
       <div className="main-content">
         <MarkdownViewer
-          renderedHtml={fileData.renderedHtml}
-          rawMarkdown={fileData.rawMarkdown}
+          renderedHtml={versionPreview?.renderedHtml ?? fileData.renderedHtml}
+          rawMarkdown={versionPreview?.rawMarkdown ?? fileData.rawMarkdown}
           annotations={annotations}
           activeAnnotationId={activeAnnotationId}
           onCreateAnnotation={handleCreateAnnotation}
           onHighlightClick={handleHighlightClick}
           onActionButtonClick={handleActionButtonClick}
+          shownDiffHunks={shownDiffHunks}
+          activeVersionId={activeVersionId}
         />
         <CommentSidebar
           annotations={annotations}

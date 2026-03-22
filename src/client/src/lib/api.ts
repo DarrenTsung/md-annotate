@@ -6,6 +6,8 @@ import type {
   Comment,
   FileResponse,
   ClaudeStatusResponse,
+  VersionEntry,
+  DiffHunk,
 } from '@shared/types.js';
 
 const BASE = '/api';
@@ -71,6 +73,21 @@ export function createApi(filePath: string, session: string | null) {
           method: 'POST',
           body: JSON.stringify(data),
         }
+      ),
+
+    getVersions: () =>
+      request<{ versions: VersionEntry[]; lastEdited: string | null }>(
+        `/versions?${fileQuery(filePath)}`
+      ),
+
+    getVersionDiff: (versionId: string) =>
+      request<{ hunks: DiffHunk[] }>(
+        `/version-diff?${fileQuery(filePath, { versionId })}`
+      ),
+
+    getVersionPreview: (versionId: string) =>
+      request<{ rawMarkdown: string; renderedHtml: string; hunks: DiffHunk[] }>(
+        `/version-preview?${fileQuery(filePath, { versionId })}`
       ),
 
     removeAction: (action: string, sourceStart: number, sourceEnd: number) =>

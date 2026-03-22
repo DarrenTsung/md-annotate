@@ -6,6 +6,7 @@ import type {
   UpdateAnnotationRequest,
 } from '../../shared/types.js';
 import type { FileManager } from '../services/file-manager.js';
+import { renderMarkdown } from '../services/markdown.js';
 
 export function createApiRouter(fileManager: FileManager): Router {
   const router = Router();
@@ -16,7 +17,7 @@ export function createApiRouter(fileManager: FileManager): Router {
     return typeof fp === 'string' && fp.length > 0 ? fp : null;
   }
 
-  // GET /api/file?filePath=...
+  // GET /api/file?filePath=...&session=...
   router.get('/file', (req, res) => {
     const filePath = getFilePath(req);
     if (!filePath) {
@@ -24,7 +25,83 @@ export function createApiRouter(fileManager: FileManager): Router {
       return;
     }
     try {
+      // Optionally link a session to this file (used by `md-annotate open`)
+      const session = typeof req.query.session === 'string' ? req.query.session : null;
+      if (session) {
+        fileManager.addSession(filePath, session);
+      }
       res.json(fileManager.getFileContent(filePath));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(404).json({ error: message });
+    }
+  });
+
+  // GET /api/versions?filePath=...
+  router.get('/versions', (req, res) => {
+    const filePath = getFilePath(req);
+    if (!filePath) {
+      res.status(400).json({ error: 'filePath query parameter is required' });
+      return;
+    }
+    try {
+      const content = fileManager.getFileContent(filePath);
+      res.json({ versions: content.versions, lastEdited: content.lastEdited });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(404).json({ error: message });
+    }
+  });
+
+  // GET /api/version-diff?filePath=...&versionId=...
+  // Returns cumulative diff: all changes from just before that version to now.
+  router.get('/version-diff', (req, res) => {
+    const filePath = getFilePath(req);
+    const versionId = typeof req.query.versionId === 'string' ? req.query.versionId : null;
+    if (!filePath || !versionId) {
+      res.status(400).json({ error: 'filePath and versionId query parameters are required' });
+      return;
+    }
+    try {
+      const vh = fileManager.getVersionHistory(filePath);
+      const content = fileManager.getFileContent(filePath);
+      const hunks = vh.getCumulativeDiff(versionId, content.rawMarkdown);
+      if (hunks === null) {
+        res.status(404).json({ error: 'Version snapshot not found' });
+        return;
+      }
+      res.json({ hunks });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(404).json({ error: message });
+    }
+  });
+
+  // GET /api/version-preview?filePath=...&versionId=...
+  // Returns the rendered document as it looked after a version was applied,
+  // plus that version's diff hunks for overlay.
+  router.get('/version-preview', (req, res) => {
+    const filePath = getFilePath(req);
+    const versionId = typeof req.query.versionId === 'string' ? req.query.versionId : null;
+    if (!filePath || !versionId) {
+      res.status(400).json({ error: 'filePath and versionId query parameters are required' });
+      return;
+    }
+    try {
+      const vh = fileManager.getVersionHistory(filePath);
+      const content = fileManager.getFileContent(filePath);
+      const afterContent = vh.getContentAfterVersion(versionId, content.rawMarkdown);
+      if (afterContent === null) {
+        res.status(404).json({ error: 'Version not found' });
+        return;
+      }
+      const versions = vh.getVersions();
+      const version = versions.find((v) => v.id === versionId);
+      res.json({
+        rawMarkdown: afterContent,
+        renderedHtml: renderMarkdown(afterContent),
+        hunks: version?.hunks ?? [],
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(404).json({ error: message });

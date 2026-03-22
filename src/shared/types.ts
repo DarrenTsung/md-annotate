@@ -51,6 +51,22 @@ export interface FileResponse {
   rawMarkdown: string;
   renderedHtml: string;
   filePath: string;
+  lastEdited: string | null;
+  versions: VersionEntry[];
+}
+
+export interface VersionEntry {
+  id: string;
+  timestamp: string;
+  hunks: DiffHunk[];
+  summary: { linesAdded: number; linesRemoved: number };
+}
+
+export interface DiffHunk {
+  type: 'added' | 'removed';
+  value: string;
+  newOffset: number;
+  oldOffset: number;
 }
 
 export interface ClaudeStatusResponse {
@@ -64,6 +80,7 @@ export interface ClaudeStatusResponse {
 export type WsMessage =
   | { type: 'file-changed'; filePath: string; rawMarkdown: string; renderedHtml: string }
   | { type: 'annotations-changed'; filePath: string; annotations: Annotation[] }
+  | { type: 'version-created'; filePath: string; version: VersionEntry; lastEdited: string }
   | { type: 'connected' };
 
 // Client -> Server

@@ -4,6 +4,8 @@ import type {
   CreateAnnotationRequest,
   FileResponse,
   WsMessage,
+  VersionEntry,
+  DiffHunk,
 } from '@shared/types.js';
 import { createApi } from '../lib/api.js';
 
@@ -24,6 +26,13 @@ interface UseAnnotationsResult {
   removeAction: (action: string, sourceStart: number, sourceEnd: number) => Promise<void>;
   activeAnnotationId: string | null;
   setActiveAnnotationId: (id: string | null) => void;
+  versions: VersionEntry[];
+  lastEdited: string | null;
+  activeVersionId: string | null;
+  setActiveVersionId: (id: string | null) => void;
+  autoShowVersionId: string | null;
+  shownDiffHunks: DiffHunk[] | null;
+  versionPreview: { rawMarkdown: string; renderedHtml: string } | null;
 }
 
 export function useAnnotations({ filePath, session }: UseAnnotationsOptions): UseAnnotationsResult {
@@ -32,6 +41,15 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
   const [claudeConnected, setClaudeConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
+  const [versions, setVersions] = useState<VersionEntry[]>([]);
+  const [lastEdited, setLastEdited] = useState<string | null>(null);
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+  const [autoShowVersionId, setAutoShowVersionId] = useState<string | null>(null);
+  const [shownDiffHunks, setShownDiffHunks] = useState<DiffHunk[] | null>(null);
+  const [versionPreview, setVersionPreview] = useState<{ rawMarkdown: string; renderedHtml: string } | null>(null);
+  const previewCacheRef = useRef<Map<string, { rawMarkdown: string; renderedHtml: string; hunks: DiffHunk[] }>>(new Map());
+  const autoShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoShowHunksRef = useRef<DiffHunk[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
 
   const api = useMemo(() => createApi(filePath, session), [filePath, session]);
@@ -48,6 +66,8 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
         setFileData(file);
         setAnnotations(anns);
         setClaudeConnected(status.connected);
+        setVersions(file.versions);
+        setLastEdited(file.lastEdited);
       } catch (err) {
         console.error('Failed to load initial data:', err);
       } finally {
@@ -95,6 +115,24 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
               setAnnotations(msg.annotations);
             }
             break;
+          case 'version-created':
+            if (msg.filePath === filePath) {
+              setVersions((prev) => [...prev, msg.version]);
+              setLastEdited(msg.lastEdited);
+
+              // Show overlay immediately, accumulating hunks across rapid edits.
+              // Reset the 5s dismiss timer on each new version.
+              autoShowHunksRef.current = [...autoShowHunksRef.current, ...msg.version.hunks];
+              setAutoShowVersionId(msg.version.id);
+              setShownDiffHunks([...autoShowHunksRef.current]);
+              if (autoShowTimerRef.current) clearTimeout(autoShowTimerRef.current);
+              autoShowTimerRef.current = setTimeout(() => {
+                setAutoShowVersionId(null);
+                setShownDiffHunks(null);
+                autoShowHunksRef.current = [];
+              }, 5000);
+            }
+            break;
           case 'connected':
             console.log('WebSocket connected');
             break;
@@ -115,6 +153,63 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
       ws.close();
     };
   }, [filePath, session]);
+
+  // Resolve the shown version's diff overlay and preview.
+  // Auto-show: hunks are set directly by the WS handler (accumulated).
+  // Hover: fetch preview from server to show historical state.
+  const shownVersionId = activeVersionId ?? autoShowVersionId;
+  useEffect(() => {
+    if (!shownVersionId) {
+      setVersionPreview(null);
+      // Only clear hunks if not in auto-show (WS handler manages auto-show hunks)
+      if (!autoShowVersionId) setShownDiffHunks(null);
+      return;
+    }
+
+    // Auto-show: WS handler already set the accumulated hunks
+    if (!activeVersionId && autoShowVersionId) {
+      setVersionPreview(null);
+      return;
+    }
+
+    // Hover: check if this is the latest version
+    const isLatest = versions.length > 0 && versions[versions.length - 1].id === shownVersionId;
+    if (isLatest) {
+      const version = versions[versions.length - 1];
+      setShownDiffHunks(version.hunks);
+      setVersionPreview(null);
+      return;
+    }
+
+    // Older version: fetch preview to show historical document state
+    const cached = previewCacheRef.current.get(shownVersionId);
+    if (cached) {
+      setShownDiffHunks(cached.hunks);
+      setVersionPreview({ rawMarkdown: cached.rawMarkdown, renderedHtml: cached.renderedHtml });
+      return;
+    }
+
+    let cancelled = false;
+    api.getVersionPreview(shownVersionId).then((preview) => {
+      if (cancelled) return;
+      previewCacheRef.current.set(shownVersionId, preview);
+      setShownDiffHunks(preview.hunks);
+      setVersionPreview({ rawMarkdown: preview.rawMarkdown, renderedHtml: preview.renderedHtml });
+    }).catch((err) => {
+      console.error('Failed to fetch version preview:', err);
+      // Fall back to per-version hunks on current doc
+      if (cancelled) return;
+      const version = versions.find((v) => v.id === shownVersionId);
+      if (version) setShownDiffHunks(version.hunks);
+    });
+
+    return () => { cancelled = true; };
+  }, [shownVersionId, activeVersionId, autoShowVersionId, versions, api]);
+
+  // Invalidate preview cache when versions change
+  useEffect(() => {
+    previewCacheRef.current.clear();
+  }, [versions]);
 
   const createAnnotation = useCallback(
     async (req: CreateAnnotationRequest): Promise<Annotation> => {
@@ -169,5 +264,12 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
     removeAction,
     activeAnnotationId,
     setActiveAnnotationId,
+    versions,
+    lastEdited,
+    activeVersionId,
+    setActiveVersionId,
+    autoShowVersionId,
+    shownDiffHunks,
+    versionPreview,
   };
 }

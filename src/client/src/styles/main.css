@@ -408,6 +408,57 @@ body {
   animation: highlight-fade-in 0.2s ease-out;
 }
 
+/* Diff overlay */
+.diff-added {
+  background: rgba(46, 160, 67, 0.15);
+}
+
+del.diff-removed {
+  display: block;
+  background: rgba(248, 81, 73, 0.1);
+  color: #9a3030;
+  text-decoration: line-through;
+  padding: 2px 8px;
+  border-left: 3px solid rgba(248, 81, 73, 0.4);
+  margin: 2px 0;
+  white-space: pre-wrap;
+  font-size: 0.93em;
+}
+
+/* Version dots in toolbar */
+.toolbar-versions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 4px;
+}
+
+.version-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.version-dot:hover,
+.version-dot.active {
+  background: var(--primary);
+  transform: scale(1.5);
+}
+
+.version-dot.auto-show {
+  animation: pulse 1s ease-in-out 3;
+  background: var(--success);
+}
+
+.last-edited {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* Action buttons (inline in rendered markdown) */
 .action-buttons {
   display: inline-flex;
