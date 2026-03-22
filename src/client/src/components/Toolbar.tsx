@@ -8,7 +8,9 @@ interface ToolbarProps {
   versions: VersionEntry[];
   activeVersionId: string | null;
   autoShowVersionId: string | null;
+  pinnedVersionId: string | null;
   onSetActiveVersion: (id: string | null) => void;
+  onPinVersion: (id: string | null) => void;
 }
 
 function formatRelativeTime(timestamp: string): string {
@@ -31,7 +33,9 @@ export function Toolbar({
   versions,
   activeVersionId,
   autoShowVersionId,
+  pinnedVersionId,
   onSetActiveVersion,
+  onPinVersion,
 }: ToolbarProps) {
   const fileName = filePath.split('/').pop() || filePath;
   const [, setTick] = useState(0);
@@ -57,19 +61,28 @@ export function Toolbar({
             <span className="last-edited">Edited {formatRelativeTime(lastEdited)}</span>
           </>
         )}
-        {versions.length > 0 && (
-          <div className="toolbar-versions">
-            {versions.slice(-20).map((v) => (
-              <span
-                key={v.id}
-                className={`version-dot${v.id === autoShowVersionId ? ' auto-show' : ''}${v.id === activeVersionId ? ' active' : ''}`}
-                title={`${new Date(v.timestamp).toLocaleTimeString()} — +${v.summary.linesAdded}/-${v.summary.linesRemoved} lines`}
-                onMouseEnter={() => onSetActiveVersion(v.id)}
-                onMouseLeave={() => onSetActiveVersion(null)}
-              />
-            ))}
-          </div>
-        )}
+        {versions.length > 0 && (() => {
+          const shown = versions.slice(-10).reverse();
+          return (
+            <div className="toolbar-versions">
+              {shown.map((v, i) => (
+                <span
+                  key={v.id}
+                  className={`version-dot${v.id === autoShowVersionId ? ' auto-show' : ''}${v.id === activeVersionId || v.id === pinnedVersionId ? ' active' : ''}${v.id === pinnedVersionId ? ' pinned' : ''}`}
+                  style={{ opacity: 1 - i * 0.07 }}
+                  title={`${new Date(v.timestamp).toLocaleTimeString()} — +${v.summary.linesAdded}/-${v.summary.linesRemoved} lines`}
+                  onMouseEnter={() => { if (!pinnedVersionId) onSetActiveVersion(v.id); }}
+                  onMouseLeave={() => { if (!pinnedVersionId) onSetActiveVersion(null); }}
+                  onClick={() => {
+                  const unpinning = pinnedVersionId === v.id;
+                  onPinVersion(unpinning ? null : v.id);
+                  onSetActiveVersion(null);
+                }}
+                />
+              ))}
+            </div>
+          );
+        })()}
       </div>
       <div className="toolbar-right">
         <span

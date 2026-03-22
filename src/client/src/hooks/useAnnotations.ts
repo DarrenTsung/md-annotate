@@ -30,6 +30,8 @@ interface UseAnnotationsResult {
   lastEdited: string | null;
   activeVersionId: string | null;
   setActiveVersionId: (id: string | null) => void;
+  pinnedVersionId: string | null;
+  setPinnedVersionId: (id: string | null) => void;
   autoShowVersionId: string | null;
   shownDiffHunks: DiffHunk[] | null;
   versionPreview: { rawMarkdown: string; renderedHtml: string } | null;
@@ -44,6 +46,7 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
   const [versions, setVersions] = useState<VersionEntry[]>([]);
   const [lastEdited, setLastEdited] = useState<string | null>(null);
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+  const [pinnedVersionId, setPinnedVersionId] = useState<string | null>(null);
   const [autoShowVersionId, setAutoShowVersionId] = useState<string | null>(null);
   const [shownDiffHunks, setShownDiffHunks] = useState<DiffHunk[] | null>(null);
   const [versionPreview, setVersionPreview] = useState<{ rawMarkdown: string; renderedHtml: string } | null>(null);
@@ -157,7 +160,7 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
   // Resolve the shown version's diff overlay and preview.
   // Auto-show: hunks are set directly by the WS handler (accumulated).
   // Hover: fetch preview from server to show historical state.
-  const shownVersionId = activeVersionId ?? autoShowVersionId;
+  const shownVersionId = pinnedVersionId ?? activeVersionId ?? autoShowVersionId;
   useEffect(() => {
     if (!shownVersionId) {
       setVersionPreview(null);
@@ -268,6 +271,8 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
     lastEdited,
     activeVersionId,
     setActiveVersionId,
+    pinnedVersionId,
+    setPinnedVersionId,
     autoShowVersionId,
     shownDiffHunks,
     versionPreview,

@@ -429,7 +429,7 @@ del.diff-removed {
 .toolbar-versions {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 0;
   margin-left: 4px;
 }
 
@@ -440,12 +440,43 @@ del.diff-removed {
   background: var(--border);
   cursor: pointer;
   transition: background 0.15s, transform 0.15s;
+  position: relative;
+  margin: 0 6px;
+  z-index: 1;
+}
+
+/* Connecting line between dots */
+.version-dot + .version-dot::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  width: 12px;
+  height: 1px;
+  background: var(--border);
+  transform: translateY(-50%);
+}
+
+/* Invisible expanded hit area covering dot + half of each connecting line */
+.version-dot::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: -6px;
+  right: -6px;
+  bottom: -8px;
 }
 
 .version-dot:hover,
 .version-dot.active {
   background: var(--primary);
-  transform: scale(1.5);
+  transform: scale(1.2);
+}
+
+.version-dot.pinned {
+  background: var(--primary);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--primary);
+  transform: scale(1.15);
 }
 
 .version-dot.auto-show {

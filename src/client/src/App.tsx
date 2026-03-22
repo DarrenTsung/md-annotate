@@ -51,6 +51,8 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
     lastEdited,
     activeVersionId,
     setActiveVersionId,
+    pinnedVersionId,
+    setPinnedVersionId,
     autoShowVersionId,
     shownDiffHunks,
     versionPreview,
@@ -127,7 +129,9 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
         versions={versions}
         activeVersionId={activeVersionId}
         autoShowVersionId={autoShowVersionId}
+        pinnedVersionId={pinnedVersionId}
         onSetActiveVersion={setActiveVersionId}
+        onPinVersion={setPinnedVersionId}
       />
       <div className="main-content">
         <MarkdownViewer
