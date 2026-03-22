@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useRef, useLayoutEffect } from 'react';
 
 interface SelectionPopoverProps {
   rect: DOMRect;
@@ -19,10 +19,6 @@ export function SelectionPopover({
 }: SelectionPopoverProps) {
   const [comment, setComment] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    textareaRef.current?.focus();
-  }, []);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -64,6 +60,13 @@ export function SelectionPopover({
 
     setPos({ top, left: Math.min(left, (parent?.clientWidth ?? window.innerWidth) - POPOVER_WIDTH) });
   }, [rect]);
+
+  // Focus the textarea once the popover is positioned and visible
+  useLayoutEffect(() => {
+    if (pos) {
+      textareaRef.current?.focus();
+    }
+  }, [pos]);
 
   return (
     <div
