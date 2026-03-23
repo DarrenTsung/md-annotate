@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { useAnnotations } from './hooks/useAnnotations.js';
 import { Toolbar } from './components/Toolbar.js';
 import { MarkdownViewer } from './components/MarkdownViewer.js';
@@ -106,6 +106,13 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
     },
     [fileData, createAnnotation, setActiveAnnotationId, removeAction]
   );
+
+  // Set page title from the first heading in the markdown
+  useEffect(() => {
+    if (!fileData) return;
+    const match = fileData.rawMarkdown.match(/^#\s+(.+)$/m);
+    document.title = match ? match[1] : filePath.split('/').pop() || 'md-annotate';
+  }, [fileData, filePath]);
 
   if (loading) {
     return (

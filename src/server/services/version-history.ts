@@ -24,6 +24,32 @@ export class VersionHistory {
     fs.mkdirSync(this.snapshotsDir, { recursive: true });
   }
 
+  private computeHunks(oldContent: string, newContent: string): { hunks: DiffHunk[]; summary: { linesAdded: number; linesRemoved: number } } {
+    const changes = diffLines(oldContent, newContent);
+    const hunks: DiffHunk[] = [];
+    let newOffset = 0;
+    let oldOffset = 0;
+    let linesAdded = 0;
+    let linesRemoved = 0;
+
+    for (const part of changes) {
+      if (part.added) {
+        hunks.push({ type: 'added', value: part.value, newOffset, oldOffset });
+        linesAdded += part.count ?? 0;
+        newOffset += part.value.length;
+      } else if (part.removed) {
+        hunks.push({ type: 'removed', value: part.value, newOffset, oldOffset });
+        linesRemoved += part.count ?? 0;
+        oldOffset += part.value.length;
+      } else {
+        newOffset += part.value.length;
+        oldOffset += part.value.length;
+      }
+    }
+
+    return { hunks, summary: { linesAdded, linesRemoved } };
+  }
+
   /**
    * Sync the cached copy to the current file content on startup.
    * Always overwrites so that a crash mid-write doesn't leave a stale cache.
@@ -49,40 +75,32 @@ export class VersionHistory {
       if (cached === newContent) return null;
     } catch { /* no cached copy yet, proceed */ }
 
-    const changes = diffLines(oldContent, newContent);
+    const { hunks, summary } = this.computeHunks(oldContent, newContent);
+    if (hunks.length === 0) return null;
+    const { linesAdded, linesRemoved } = summary;
 
-    const hunks: DiffHunk[] = [];
-    let newOffset = 0;
-    let oldOffset = 0;
-    let linesAdded = 0;
-    let linesRemoved = 0;
+    const now = new Date();
+    const versions = this.getVersions();
+    const latest = versions.length > 0 ? versions[versions.length - 1] : null;
+    const latestAge = latest ? now.getTime() - new Date(latest.timestamp).getTime() : Infinity;
 
-    for (const part of changes) {
-      if (part.added) {
-        hunks.push({
-          type: 'added',
-          value: part.value,
-          newOffset,
-          oldOffset,
-        });
-        linesAdded += part.count ?? 0;
-        newOffset += part.value.length;
-      } else if (part.removed) {
-        hunks.push({
-          type: 'removed',
-          value: part.value,
-          newOffset,
-          oldOffset,
-        });
-        linesRemoved += part.count ?? 0;
-        oldOffset += part.value.length;
-      } else {
-        newOffset += part.value.length;
-        oldOffset += part.value.length;
+    // Coalesce: if the latest version is <5s old, update it in place
+    // by re-diffing from its original snapshot to the new content.
+    if (latest && latestAge < 5000) {
+      const snapshotPath = path.join(this.snapshotsDir, `${latest.id}.md`);
+      let snapshotContent: string | null = null;
+      try { snapshotContent = fs.readFileSync(snapshotPath, 'utf-8'); } catch { /* missing */ }
+
+      if (snapshotContent !== null) {
+        const coalesced = this.computeHunks(snapshotContent, newContent);
+        latest.timestamp = now.toISOString();
+        latest.hunks = coalesced.hunks;
+        latest.summary = coalesced.summary;
+        fs.writeFileSync(this.versionsPath, JSON.stringify(versions, null, 2), 'utf-8');
+        fs.writeFileSync(this.cachedPath, newContent, 'utf-8');
+        return latest;
       }
     }
-
-    if (hunks.length === 0) return null;
 
     const id = crypto.randomUUID();
 
@@ -93,13 +111,10 @@ export class VersionHistory {
 
     const version: VersionEntry = {
       id,
-      timestamp: new Date().toISOString(),
+      timestamp: now.toISOString(),
       hunks,
-      summary: { linesAdded, linesRemoved },
+      summary,
     };
-
-    // Append to versions list
-    const versions = this.getVersions();
 
     // Clean up snapshot files for versions being dropped
     while (versions.length >= MAX_VERSIONS) {
@@ -128,26 +143,7 @@ export class VersionHistory {
 
     const oldContent = fs.readFileSync(snapshotPath, 'utf-8');
     if (oldContent === currentContent) return [];
-
-    const changes = diffLines(oldContent, currentContent);
-    const hunks: DiffHunk[] = [];
-    let newOffset = 0;
-    let oldOffset = 0;
-
-    for (const part of changes) {
-      if (part.added) {
-        hunks.push({ type: 'added', value: part.value, newOffset, oldOffset });
-        newOffset += part.value.length;
-      } else if (part.removed) {
-        hunks.push({ type: 'removed', value: part.value, newOffset, oldOffset });
-        oldOffset += part.value.length;
-      } else {
-        newOffset += part.value.length;
-        oldOffset += part.value.length;
-      }
-    }
-
-    return hunks;
+    return this.computeHunks(oldContent, currentContent).hunks;
   }
 
   /**

@@ -120,7 +120,16 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
             break;
           case 'version-created':
             if (msg.filePath === filePath) {
-              setVersions((prev) => [...prev, msg.version]);
+              setVersions((prev) => {
+                const idx = prev.findIndex((v) => v.id === msg.version.id);
+                if (idx >= 0) {
+                  // Coalesced: update existing version in place
+                  const updated = [...prev];
+                  updated[idx] = msg.version;
+                  return updated;
+                }
+                return [...prev, msg.version];
+              });
               setLastEdited(msg.lastEdited);
 
               // Show overlay immediately, accumulating hunks across rapid edits.
