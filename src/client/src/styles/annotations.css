@@ -155,6 +155,12 @@
 }
 
 
+/* Stale annotation (anchor text was edited) */
+.comment-thread.stale .comment-quote {
+  border-left-style: dashed;
+  opacity: 0.6;
+}
+
 .comment-quote {
   margin: 2px 0 4px;
   padding: 2px 0 2px 8px;

@@ -363,6 +363,13 @@ body {
   text-underline-offset: 2px;
 }
 
+/* Stale highlight (anchor text changed, offsets may be wrong) */
+.annotation-highlight.stale {
+  background-color: var(--highlight-bg);
+  opacity: 0.5;
+  border-bottom-style: dashed;
+}
+
 /* Working highlight pulse */
 @keyframes highlight-working {
   0%, 100% { background-color: var(--highlight-bg); }

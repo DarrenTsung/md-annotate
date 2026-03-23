@@ -42,7 +42,7 @@ export function CommentThread({
 
   return (
     <div
-      className={`comment-thread ${isActive ? 'active' : ''} ${isResolved ? 'resolved' : ''} ${annotation.working ? 'working' : ''}`}
+      className={`comment-thread ${isActive ? 'active' : ''} ${isResolved ? 'resolved' : ''} ${annotation.stale ? 'stale' : ''} ${annotation.working ? 'working' : ''}`}
       data-annotation-id={annotation.id}
       tabIndex={0}
       onClick={onActivate}

@@ -75,6 +75,7 @@ export class AnnotationService {
         },
       ],
       status: 'open',
+      stale: false,
       sentToClaude: false,
       working: false,
       createdAt: now,
@@ -180,11 +181,13 @@ export class AnnotationService {
       }
 
       if (matches.length === 0) {
-        // Text was deleted — mark as stale by keeping old offsets
-        // The UI will dim these
-        annotation.status = 'resolved';
-        annotation.updatedAt = new Date().toISOString();
-        changed = true;
+        // Text can't be found — mark stale but keep open so it can still
+        // receive replies. The UI will dim these.
+        if (!annotation.stale) {
+          annotation.stale = true;
+          annotation.updatedAt = new Date().toISOString();
+          changed = true;
+        }
         continue;
       }
 
@@ -224,6 +227,7 @@ export class AnnotationService {
 
       annotation.startOffset = bestMatch;
       annotation.endOffset = bestMatch + annotation.selectedText.length;
+      annotation.stale = false;
 
       // Update context
       annotation.contextBefore = newContent.slice(

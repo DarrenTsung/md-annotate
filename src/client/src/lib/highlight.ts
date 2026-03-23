@@ -16,6 +16,7 @@ interface HighlightRange {
   endOffset: number;
   selectedText?: string;
   status: string;
+  stale?: boolean;
   working?: boolean;
 }
 
@@ -34,6 +35,7 @@ export function applyHighlights(
       endOffset: a.endOffset,
       selectedText: a.selectedText,
       status: a.status,
+      stale: a.stale,
       working: a.working,
     })
   );
@@ -245,7 +247,7 @@ function highlightTextInElement(
 
     const mark = document.createElement('mark');
     mark.setAttribute('data-annotation-id', range.annotationId);
-    mark.className = range.className ?? `annotation-highlight ${range.status === 'resolved' ? 'resolved' : ''} ${range.working ? 'working' : ''}`.trim();
+    mark.className = range.className ?? `annotation-highlight ${range.status === 'resolved' ? 'resolved' : ''} ${range.stale ? 'stale' : ''} ${range.working ? 'working' : ''}`.trim();
     mark.textContent = middle;
     marks.push(mark);
 

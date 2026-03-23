@@ -13,6 +13,8 @@ export interface Annotation {
   contextAfter: string;
   comments: Comment[];
   status: 'open' | 'resolved' | 'deleted';
+  /** True when the selected text can no longer be found in the file */
+  stale: boolean;
   sentToClaude: boolean;
   working: boolean;
   createdAt: string;
