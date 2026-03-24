@@ -95,7 +95,9 @@ function getMd(): MarkdownIt {
 
     mdInstance.renderer.rules.link_open = function (tokens, idx, options, env, self) {
       const href = tokens[idx].attrGet('href') || '';
-      if (!href.startsWith('#')) {
+      const isAnchor = href.startsWith('#');
+      const isRelativeMd = !isAnchor && !/^[a-z]+:/i.test(href) && href.replace(/#.*$/, '').endsWith('.md');
+      if (!isAnchor && !isRelativeMd) {
         tokens[idx].attrSet('target', '_blank');
         tokens[idx].attrSet('rel', 'noopener noreferrer');
       }

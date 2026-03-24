@@ -185,13 +185,24 @@ export class FileManager {
     const state = this.getOrCreate(filePath);
     state.clients.add(ws);
     if (session) {
-      // Remove session from any other file so getFileForSession returns the right one
+      // Detect if this session was previously on a different file
+      let previousFile: string | null = null;
       for (const [otherPath, otherState] of this.files) {
-        if (otherPath !== filePath) {
+        if (otherPath !== filePath && otherState.sessions.has(session)) {
+          previousFile = otherPath;
           otherState.sessions.delete(session);
         }
       }
       state.sessions.add(session);
+
+      // Notify the Claude session that the file changed
+      if (previousFile) {
+        const fileName = filePath.split('/').pop();
+        this.itermBridge.sendNotification(
+          session,
+          `[md-annotate] Navigated to ${fileName} (${filePath})`
+        );
+      }
     }
   }
 

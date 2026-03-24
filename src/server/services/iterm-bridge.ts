@@ -44,6 +44,15 @@ export class ItermBridge {
     }, 2500);
   }
 
+  /**
+   * Send a one-off notification to an iTerm session (no debounce).
+   */
+  sendNotification(sessionId: string, message: string): void {
+    const uuid = this.extractUuid(sessionId);
+    if (!uuid) return;
+    this.sendToIterm(uuid, message);
+  }
+
   isSessionReachable(sessionId: string): boolean {
     const uuid = this.extractUuid(sessionId);
     return uuid !== null;

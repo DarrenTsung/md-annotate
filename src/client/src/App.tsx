@@ -84,6 +84,15 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
     [setActiveAnnotationId]
   );
 
+  const handleNavigateFile = useCallback(
+    (resolvedPath: string) => {
+      const params = new URLSearchParams(window.location.search);
+      params.set('file', resolvedPath);
+      window.location.search = params.toString();
+    },
+    []
+  );
+
   const handleActionButtonClick = useCallback(
     async (action: string, sourceStart: number, sourceEnd: number, selectedText: string) => {
       if (!fileData) return;
@@ -149,6 +158,8 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
           onCreateAnnotation={handleCreateAnnotation}
           onHighlightClick={handleHighlightClick}
           onActionButtonClick={handleActionButtonClick}
+          onNavigateFile={handleNavigateFile}
+          filePath={filePath}
           shownDiffHunks={shownDiffHunks}
           activeVersionId={activeVersionId}
         />

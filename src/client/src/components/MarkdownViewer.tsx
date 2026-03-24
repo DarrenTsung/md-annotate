@@ -14,6 +14,8 @@ interface MarkdownViewerProps {
   onCreateAnnotation: (offset: SourceOffset, comment: string) => void;
   onHighlightClick: (annotationId: string) => void;
   onActionButtonClick: (action: string, sourceStart: number, sourceEnd: number, selectedText: string) => void;
+  onNavigateFile: (resolvedPath: string) => void;
+  filePath: string;
   shownDiffHunks: DiffHunk[] | null;
   activeVersionId: string | null;
 }
@@ -26,6 +28,8 @@ export function MarkdownViewer({
   onCreateAnnotation,
   onHighlightClick,
   onActionButtonClick,
+  onNavigateFile,
+  filePath,
   shownDiffHunks,
   activeVersionId,
 }: MarkdownViewerProps) {
@@ -170,20 +174,42 @@ export function MarkdownViewer({
       }
 
       // Anchor link clicks — smooth scroll instead of navigating
-      const link = target.closest('a[href^="#"]') as HTMLAnchorElement | null;
-      if (link) {
+      const anchorLink = target.closest('a[href^="#"]') as HTMLAnchorElement | null;
+      if (anchorLink) {
         e.preventDefault();
-        const id = decodeURIComponent(link.getAttribute('href')!.slice(1));
+        const id = decodeURIComponent(anchorLink.getAttribute('href')!.slice(1));
         const heading = document.getElementById(id);
         if (heading) {
           heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+        return;
+      }
+
+      // Relative .md link clicks — navigate within md-annotate
+      const mdLink = target.closest('a') as HTMLAnchorElement | null;
+      if (mdLink) {
+        const href = mdLink.getAttribute('href') || '';
+        // Skip external links, anchors, and non-.md files
+        if (/^[a-z]+:/i.test(href) || href.startsWith('#')) return;
+        const mdPath = href.replace(/#.*$/, ''); // strip anchor
+        if (!mdPath.endsWith('.md')) return;
+
+        e.preventDefault();
+        // Resolve relative to current file's directory
+        const currentDir = filePath.substring(0, filePath.lastIndexOf('/'));
+        const parts = (currentDir + '/' + mdPath).split('/');
+        const resolved: string[] = [];
+        for (const p of parts) {
+          if (p === '..') resolved.pop();
+          else if (p !== '.' && p !== '') resolved.push(p);
+        }
+        onNavigateFile('/' + resolved.join('/'));
       }
     }
 
     container.addEventListener('click', handleClick);
     return () => container.removeEventListener('click', handleClick);
-  }, [onHighlightClick, onActionButtonClick]);
+  }, [onHighlightClick, onActionButtonClick, onNavigateFile, filePath]);
 
   function handleSubmitComment(comment: string) {
     if (selection) {
