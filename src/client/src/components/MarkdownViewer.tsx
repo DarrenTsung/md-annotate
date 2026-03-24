@@ -1,10 +1,13 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import mermaid from 'mermaid';
 import type { Annotation, DiffHunk } from '@shared/types.js';
 import { applyHighlights, applyPendingHighlight } from '../lib/highlight.js';
 import { applyDiffOverlay } from '../lib/diffOverlay.js';
 import { useTextSelection } from '../hooks/useTextSelection.js';
 import { SelectionPopover } from './SelectionPopover.js';
 import type { SourceOffset } from '../lib/offsets.js';
+
+mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
 
 interface MarkdownViewerProps {
   renderedHtml: string;
@@ -121,6 +124,43 @@ export function MarkdownViewer({
     window.scrollTo(0, scrollY);
     return cleanup;
   }, [shownDiffHunks, renderedHtml]);
+
+  // Render mermaid diagrams after HTML is injected
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const codeBlocks = container.querySelectorAll('code.language-mermaid');
+    if (codeBlocks.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      for (const code of codeBlocks) {
+        if (cancelled) return;
+        const pre = code.parentElement;
+        if (!pre || pre.tagName !== 'PRE') continue;
+
+        const source = code.textContent || '';
+        const id = `mermaid-${Math.random().toString(36).slice(2, 10)}`;
+        try {
+          const { svg } = await mermaid.render(id, source);
+          if (cancelled) return;
+          const wrapper = document.createElement('div');
+          wrapper.className = 'mermaid-diagram';
+          // Copy source offset attributes so highlights/selection still work
+          if (pre.dataset.sourceStart) wrapper.dataset.sourceStart = pre.dataset.sourceStart;
+          if (pre.dataset.sourceEnd) wrapper.dataset.sourceEnd = pre.dataset.sourceEnd;
+          wrapper.innerHTML = svg;
+          pre.replaceWith(wrapper);
+        } catch {
+          // Leave the code block as-is if rendering fails
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [renderedHtml]);
 
   // Cmd+C copies the selected text and dismisses the popover
   useEffect(() => {

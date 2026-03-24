@@ -19,6 +19,7 @@
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.0",
     "markdown-it-task-lists": "^2.1.1",
+    "mermaid": "^11.13.0",
     "open": "^10.1.0",
     "uuid": "^11.1.0",
     "ws": "^8.18.0"
