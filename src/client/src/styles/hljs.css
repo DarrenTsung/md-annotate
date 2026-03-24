@@ -1,0 +1,79 @@
+/*
+ * Syntax highlighting theme matching the walkthrough tool's color palette.
+ * Based on GitHub Prettylights with ~30% saturation boost.
+ */
+
+/* Comments */
+.hljs-comment,
+.hljs-quote {
+  color: #556271;
+  font-style: italic;
+}
+
+/* Keywords */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-deletion {
+  color: #db1522;
+}
+
+/* Strings */
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: #002d72;
+}
+
+/* Numbers, constants, booleans */
+.hljs-number,
+.hljs-literal,
+.hljs-built_in,
+.hljs-attr {
+  color: #004fb3;
+}
+
+/* Functions, methods */
+.hljs-title,
+.hljs-title.function_,
+.hljs-section {
+  color: #6025cd;
+}
+
+/* Types, classes, constructors */
+.hljs-type,
+.hljs-title.class_,
+.hljs-name {
+  color: #953800;
+}
+
+/* Variables, params, properties */
+.hljs-variable,
+.hljs-params,
+.hljs-property {
+  color: #1f2328;
+}
+
+/* Tags (HTML/XML) */
+.hljs-tag {
+  color: #004fb3;
+}
+
+/* Attributes (HTML) */
+.hljs-attribute {
+  color: #6025cd;
+}
+
+/* Symbols, meta */
+.hljs-symbol,
+.hljs-meta {
+  color: #004fb3;
+}
+
+/* Emphasis */
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
