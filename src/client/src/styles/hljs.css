@@ -24,12 +24,16 @@
   color: #002d72;
 }
 
-/* Numbers, constants, booleans */
+/* Numbers, constants, built-in types (string, number, boolean, etc.) */
 .hljs-number,
 .hljs-literal,
-.hljs-built_in,
-.hljs-attr {
+.hljs-built_in {
   color: #004fb3;
+}
+
+/* Object keys / property names */
+.hljs-attr {
+  color: #1f2328;
 }
 
 /* Functions, methods */
