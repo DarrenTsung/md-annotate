@@ -275,6 +275,7 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
 
     try {
+      fileManager.ensureFresh(filePath);
       const svc = fileManager.getAnnotationService(filePath);
       const comment = svc.addComment(annotationId, 'claude', text);
       if (!comment) {
@@ -421,6 +422,10 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
 
     try {
+      // Sync file cache eagerly so annotation offsets are up-to-date
+      // even if chokidar's stabilization delay hasn't fired yet.
+      fileManager.ensureFresh(filePath);
+
       const svc = fileManager.getAnnotationService(filePath);
       const pending = svc.getAll().filter((a) => {
         if (a.status !== 'open') return false;
@@ -466,6 +471,7 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
 
     try {
+      fileManager.ensureFresh(filePath);
       const svc = fileManager.getAnnotationService(filePath);
       const annotations = svc.getAll().filter((a) => {
         if (a.status !== 'open') return false;

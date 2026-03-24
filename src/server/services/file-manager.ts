@@ -266,6 +266,55 @@ export class FileManager {
   }
 
   /**
+   * Ensure the cached content matches the file on disk.
+   * If the file has been edited since the last cache update (e.g. chokidar
+   * hasn't fired yet due to stabilization delay), sync eagerly so that
+   * annotation offsets are correct before being returned to callers.
+   */
+  ensureFresh(filePath: string): void {
+    const state = this.files.get(filePath);
+    if (!state) return;
+
+    let currentContent: string;
+    try {
+      currentContent = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      return;
+    }
+
+    if (currentContent === state.rawMarkdown) return;
+
+    console.log(`[${filePath}] Eager sync: file changed before watcher fired`);
+    const version = state.versionHistory.recordChange(state.rawMarkdown, currentContent);
+    state.rawMarkdown = currentContent;
+    state.renderedHtml = renderMarkdown(currentContent);
+
+    const { annotations, changed } = state.annotationService.reanchor(currentContent);
+
+    this.broadcastToFile(state, {
+      type: 'file-changed',
+      filePath,
+      rawMarkdown: state.rawMarkdown,
+      renderedHtml: state.renderedHtml,
+    });
+    if (version) {
+      this.broadcastToFile(state, {
+        type: 'version-created',
+        filePath,
+        version,
+        lastEdited: version.timestamp,
+      });
+    }
+    if (changed) {
+      this.broadcastToFile(state, {
+        type: 'annotations-changed',
+        filePath,
+        annotations,
+      });
+    }
+  }
+
+  /**
    * Get annotation service for a file.
    */
   getAnnotationService(filePath: string): AnnotationService {
