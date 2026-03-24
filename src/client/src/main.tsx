@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.js';
+import 'highlight.js/styles/github.min.css';
 import './styles/main.css';
 import './styles/annotations.css';
 
