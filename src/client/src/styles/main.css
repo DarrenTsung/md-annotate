@@ -365,8 +365,7 @@ body {
 
 /* Stale highlight (anchor text changed, offsets may be wrong) */
 .annotation-highlight.stale {
-  background-color: var(--highlight-bg);
-  opacity: 0.5;
+  background-color: rgba(254, 243, 181, 0.4);
   border-bottom-style: dashed;
 }
 
