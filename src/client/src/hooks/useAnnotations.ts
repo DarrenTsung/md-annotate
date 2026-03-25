@@ -116,6 +116,15 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
           case 'annotations-changed':
             if (msg.filePath === filePath) {
               setAnnotations(msg.annotations);
+              // If the active annotation was resolved by Claude, deselect it
+              // so its CommentForm doesn't remount with autoFocus and steal
+              // keyboard input from whatever the user was typing in.
+              setActiveAnnotationId((prev) => {
+                if (!prev) return null;
+                const active = msg.annotations.find((a: Annotation) => a.id === prev);
+                if (active && active.status === 'resolved') return null;
+                return prev;
+              });
             }
             break;
           case 'version-created':

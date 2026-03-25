@@ -18,6 +18,11 @@ export function CommentForm({
 
   useEffect(() => {
     if (autoFocus) {
+      // Don't steal focus from another textarea/input the user is typing in
+      const active = document.activeElement;
+      if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) {
+        return;
+      }
       textareaRef.current?.focus();
     }
   }, [autoFocus]);
