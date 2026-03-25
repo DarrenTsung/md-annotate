@@ -171,7 +171,7 @@ async function cliNext(): Promise<void> {
   console.log(`File: ${data.filePath}`);
   console.log(`ID: ${a.id}`);
 
-  // Show context lines around the selection
+  // Show context with XML tags around the exact selected text
   const content = fs.readFileSync(data.filePath, 'utf-8');
   const lines = content.split('\n');
   const beforeContent = content.slice(0, a.startOffset);
@@ -180,10 +180,16 @@ async function cliNext(): Promise<void> {
   const endLine = startLine + selectedLines - 1;
   const ctxStart = Math.max(0, startLine - 3);
   const ctxEnd = Math.min(lines.length - 1, endLine + 3);
+
+  // Build context with <selected> tags injected at exact offsets
+  const ctxLineStart = content.split('\n').slice(0, ctxStart).join('\n').length + (ctxStart > 0 ? 1 : 0);
+  const selStart = a.startOffset - ctxLineStart;
+  const selEnd = a.endOffset - ctxLineStart;
+  const ctxText = lines.slice(ctxStart, ctxEnd + 1).join('\n');
+  const tagged = ctxText.slice(0, selStart) + '<selected>' + ctxText.slice(selStart, selEnd) + '</selected>' + ctxText.slice(selEnd);
   console.log(`\nContext (lines ${ctxStart + 1}-${ctxEnd + 1}):`);
-  for (let i = ctxStart; i <= ctxEnd; i++) {
-    const marker = (i >= startLine && i <= endLine) ? '>' : ' ';
-    console.log(`  ${marker} ${lines[i]}`);
+  for (const line of tagged.split('\n')) {
+    console.log(`    ${line}`);
   }
 
   console.log(`\nComments:`);
