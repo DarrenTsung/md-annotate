@@ -319,13 +319,21 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
 
     try {
+      fileManager.ensureFresh(filePath);
       const svc = fileManager.getAnnotationService(filePath);
-      const annotation = svc.update(annotationId, { status: 'resolved' });
-      if (!annotation) {
+      const existing = svc.getById(annotationId);
+      if (!existing) {
         res.status(404).json({ error: 'Annotation not found' });
         return;
       }
 
+      const lastComment = existing.comments[existing.comments.length - 1];
+      if (!lastComment || lastComment.author !== 'claude') {
+        res.status(400).json({ error: 'Cannot resolve without replying first' });
+        return;
+      }
+
+      svc.update(annotationId, { status: 'resolved' });
       fileManager.broadcastAnnotations(filePath);
       res.json({ annotationId, status: 'resolved' });
     } catch (err: unknown) {
