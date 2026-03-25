@@ -167,7 +167,13 @@ export class AnnotationService {
         annotation.endOffset
       );
       if (currentSlice === annotation.selectedText) {
-        continue; // Still in place
+        // Text is still at stored offsets — clear stale if it was previously lost
+        if (annotation.stale) {
+          annotation.stale = false;
+          annotation.updatedAt = new Date().toISOString();
+          changed = true;
+        }
+        continue;
       }
 
       // Try to find the text elsewhere in the document
@@ -191,7 +197,7 @@ export class AnnotationService {
         continue;
       }
 
-      // Disambiguate with context
+      // Score each match by surrounding context, with proximity tiebreaker
       let bestMatch = matches[0];
       let bestScore = 0;
 
@@ -206,23 +212,35 @@ export class AnnotationService {
           matchOffset + annotation.selectedText.length + CONTEXT_LENGTH
         );
 
-        // Score based on context overlap
-        if (before.endsWith(annotation.contextBefore)) {
+        if (before.endsWith(annotation.contextBefore) && annotation.contextBefore.length >= 5) {
           score += 2;
-        } else if (before.includes(annotation.contextBefore.slice(-10))) {
+        } else if (annotation.contextBefore.length >= 10 && before.includes(annotation.contextBefore.slice(-10))) {
           score += 1;
         }
 
-        if (after.startsWith(annotation.contextAfter)) {
+        if (after.startsWith(annotation.contextAfter) && annotation.contextAfter.length >= 5) {
           score += 2;
-        } else if (after.includes(annotation.contextAfter.slice(0, 10))) {
+        } else if (annotation.contextAfter.length >= 10 && after.includes(annotation.contextAfter.slice(0, 10))) {
           score += 1;
         }
 
-        if (score > bestScore) {
+        const closer = Math.abs(matchOffset - annotation.startOffset)
+                      < Math.abs(bestMatch - annotation.startOffset);
+        if (score > bestScore || (score === bestScore && closer)) {
           bestScore = score;
           bestMatch = matchOffset;
         }
+      }
+
+      // Require at least partial context match to re-anchor. Without any
+      // context evidence the match could be a coincidental duplicate.
+      if (bestScore === 0) {
+        if (!annotation.stale) {
+          annotation.stale = true;
+          annotation.updatedAt = new Date().toISOString();
+          changed = true;
+        }
+        continue;
       }
 
       annotation.startOffset = bestMatch;

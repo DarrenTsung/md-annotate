@@ -188,7 +188,13 @@ function highlightTextInElement(
       matchStart = bestIdx;
       matchEnd = matchStart + range.selectedText.length;
     } else {
-      // No exact match — selection may span multiple blocks.
+      // No exact match in this block's rendered text.
+      if (range.stale) {
+        // Stale annotation: text was edited and offsets are unreliable.
+        // Don't render a bogus highlight at wrong positions.
+        return;
+      }
+      // Non-stale: selection may span multiple blocks.
       // Highlight the portion of this block that overlaps the selection's
       // raw offset range, using offset-based positioning as fallback.
       const overlapStart = Math.max(range.startOffset, blockStartOffset);
