@@ -192,6 +192,7 @@ async function cliNext(): Promise<void> {
     console.log(`    ${line}`);
   }
 
+  console.log(`\nSelected text: ${a.selectedText}`);
   console.log(`\nComments:`);
   for (const c of a.comments) {
     console.log(`  ${c.author}: ${c.text}`);
