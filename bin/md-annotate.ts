@@ -168,6 +168,9 @@ async function cliNext(): Promise<void> {
   }
 
   const a = data.annotation;
+  const sep = '─'.repeat(60);
+
+  console.log(sep);
   console.log(`File: ${data.filePath}`);
   console.log(`ID: ${a.id}`);
 
@@ -187,17 +190,20 @@ async function cliNext(): Promise<void> {
   const selEnd = a.endOffset - ctxLineStart;
   const ctxText = lines.slice(ctxStart, ctxEnd + 1).join('\n');
   const tagged = ctxText.slice(0, selStart) + '<selected>' + ctxText.slice(selStart, selEnd) + '</selected>' + ctxText.slice(selEnd);
-  console.log(`\nContext (lines ${ctxStart + 1}-${ctxEnd + 1}):`);
+  console.log(sep);
+  console.log(`Context (lines ${ctxStart + 1}-${ctxEnd + 1}):`);
   for (const line of tagged.split('\n')) {
     console.log(`    ${line}`);
   }
-
-  console.log(`\nSelected text: ${a.selectedText}`);
-  console.log(`\nComments:`);
+  console.log(sep);
+  console.log(`Selected text: ${a.selectedText}`);
+  console.log(sep);
+  console.log(`Comments:`);
   for (const c of a.comments) {
     console.log(`  ${c.author}: ${c.text}`);
   }
-  console.log(`\nRemaining: ${data.remaining}`);
+  console.log(sep);
+  console.log(`Remaining: ${data.remaining}`);
 }
 
 async function cliStatus(): Promise<void> {
