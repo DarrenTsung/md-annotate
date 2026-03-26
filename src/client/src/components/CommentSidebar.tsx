@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Annotation } from '@shared/types.js';
 import { CommentThread } from './CommentThread.js';
 
@@ -60,23 +60,15 @@ export function CommentSidebar({
         ))}
 
         {resolvedAnnotations.length > 0 && (
-          <>
-            <div className="sidebar-divider">
-              <span>Resolved</span>
-            </div>
-            {resolvedAnnotations.map((annotation) => (
-              <CommentThread
-                key={annotation.id}
-                annotation={annotation}
-                isActive={activeAnnotationId === annotation.id}
-                onActivate={() => onSetActive(activeAnnotationId === annotation.id ? null : annotation.id)}
-                onReply={(text) => onReply(annotation.id, text)}
-                onResolve={() => onResolve(annotation.id)}
-                onReopen={() => onReopen(annotation.id)}
-                onDelete={() => onDelete(annotation.id)}
-              />
-            ))}
-          </>
+          <ResolvedSection
+            resolvedAnnotations={resolvedAnnotations}
+            activeAnnotationId={activeAnnotationId}
+            onSetActive={onSetActive}
+            onReply={onReply}
+            onResolve={onResolve}
+            onReopen={onReopen}
+            onDelete={onDelete}
+          />
         )}
 
         {annotations.length === 0 && (
@@ -89,5 +81,78 @@ export function CommentSidebar({
         )}
       </div>
     </aside>
+  );
+}
+
+function ResolvedSection({
+  resolvedAnnotations,
+  activeAnnotationId,
+  onSetActive,
+  onReply,
+  onResolve,
+  onReopen,
+  onDelete,
+}: {
+  resolvedAnnotations: Annotation[];
+  activeAnnotationId: string | null;
+  onSetActive: (id: string | null) => void;
+  onReply: (annotationId: string, text: string) => void;
+  onResolve: (annotationId: string) => void;
+  onReopen: (annotationId: string) => void;
+  onDelete: (annotationId: string) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  function handleDeleteAll() {
+    for (const a of resolvedAnnotations) {
+      onDelete(a.id);
+    }
+    setConfirming(false);
+  }
+
+  return (
+    <>
+      <div className="sidebar-divider">
+        <span>Resolved</span>
+        {confirming ? (
+          <span className="delete-resolved-confirm">
+            <button
+              className="btn btn-danger btn-xs"
+              onClick={() => handleDeleteAll()}
+            >
+              Delete {resolvedAnnotations.length}
+            </button>
+            <button
+              className="btn btn-secondary btn-xs"
+              onClick={() => setConfirming(false)}
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <button
+            className="delete-resolved-btn"
+            title="Delete all resolved"
+            onClick={() => setConfirming(true)}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m6.53-.528a.5.5 0 0 0-.528.47l-.5 8.5a.5.5 0 0 0 .998.058l.5-8.5a.5.5 0 0 0-.47-.528M8 4.5a.5.5 0 0 0-.5.5v8.5a.5.5 0 0 0 1 0V5a.5.5 0 0 0-.5-.5"/>
+            </svg>
+          </button>
+        )}
+      </div>
+      {resolvedAnnotations.map((annotation) => (
+        <CommentThread
+          key={annotation.id}
+          annotation={annotation}
+          isActive={activeAnnotationId === annotation.id}
+          onActivate={() => onSetActive(activeAnnotationId === annotation.id ? null : annotation.id)}
+          onReply={(text) => onReply(annotation.id, text)}
+          onResolve={() => onResolve(annotation.id)}
+          onReopen={() => onReopen(annotation.id)}
+          onDelete={() => onDelete(annotation.id)}
+        />
+      ))}
+    </>
   );
 }

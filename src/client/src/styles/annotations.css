@@ -63,6 +63,9 @@
 }
 
 .sidebar-divider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 8px 12px;
   font-size: 11px;
   font-weight: 600;
@@ -73,6 +76,51 @@
   margin-top: 4px;
   background: var(--bg-secondary);
   animation: fade-in 0.2s ease-out;
+}
+
+.delete-resolved-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sidebar-divider:hover .delete-resolved-btn {
+  opacity: 1;
+}
+
+.delete-resolved-btn:hover {
+  color: var(--danger);
+  background: var(--bg);
+}
+
+.delete-resolved-confirm {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-xs {
+  font-size: 10px;
+  padding: 1px 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: white;
+  border: 1px solid var(--danger);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  opacity: 0.9;
 }
 
 /* Comment thread */
