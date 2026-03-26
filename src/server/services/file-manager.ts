@@ -225,14 +225,9 @@ export class FileManager {
 
   /**
    * Associate a session with a file (called from API routes).
-   * Removes the session from any other file first.
+   * A session can be linked to multiple files simultaneously.
    */
   addSession(filePath: string, session: string): void {
-    for (const [otherPath, otherState] of this.files) {
-      if (otherPath !== filePath) {
-        otherState.sessions.delete(session);
-      }
-    }
     const state = this.getOrCreate(filePath);
     state.sessions.add(session);
   }
@@ -266,11 +261,39 @@ export class FileManager {
 
   /**
    * Reverse lookup: find which file a session is associated with.
+   * Returns the first match (for backwards compat with single-file callers).
    */
   getFileForSession(session: string): string | null {
     for (const [filePath, state] of this.files) {
       if (state.sessions.has(session)) {
         return filePath;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Reverse lookup: find all files a session is associated with.
+   */
+  getFilesForSession(session: string): string[] {
+    const files: string[] = [];
+    for (const [filePath, state] of this.files) {
+      if (state.sessions.has(session)) {
+        files.push(filePath);
+      }
+    }
+    return files;
+  }
+
+  /**
+   * Find which file contains a given annotation ID across all files
+   * linked to a session. Returns { filePath, svc } or null.
+   */
+  findAnnotation(session: string, annotationId: string): { filePath: string; svc: import('./annotations.js').AnnotationService } | null {
+    for (const filePath of this.getFilesForSession(session)) {
+      const svc = this.getAnnotationService(filePath);
+      if (svc.getById(annotationId)) {
+        return { filePath, svc };
       }
     }
     return null;

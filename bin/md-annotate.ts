@@ -223,7 +223,7 @@ async function cliStatus(): Promise<void> {
   }
 
   const data = (await res.json()) as {
-    filePath: string;
+    filePaths: string[];
     annotations: Array<{
       id: string;
       selectedText: string;
@@ -240,7 +240,7 @@ async function cliStatus(): Promise<void> {
     return;
   }
 
-  console.log(`File: ${data.filePath}`);
+  console.log(`Files: ${data.filePaths.map((f) => f.split('/').pop()).join(', ')}`);
   console.log(`${data.annotations.length} pending annotation(s):\n`);
   for (const a of data.annotations) {
     const lastUserComment = [...a.comments].reverse().find((c) => c.author === 'user');
@@ -262,41 +262,47 @@ function formatRelativeTime(iso: string): string {
 }
 
 async function cliOpen(): Promise<void> {
-  const fileArg = args[1];
-  if (!fileArg) {
-    console.error('Usage: md-annotate open <file.md>');
+  const fileArgs = args.slice(1);
+  if (fileArgs.length === 0) {
+    console.error('Usage: md-annotate open <file.md> [file2.md ...]');
     process.exit(1);
   }
 
-  const filePath = path.resolve(fileArg);
-  if (!fs.existsSync(filePath)) {
-    console.error(`File not found: ${filePath}`);
-    process.exit(1);
-  }
-  if (!filePath.endsWith('.md')) {
-    console.error(`File must be a .md file: ${filePath}`);
-    process.exit(1);
+  const filePaths: string[] = [];
+  for (const fileArg of fileArgs) {
+    const filePath = path.resolve(fileArg);
+    if (!fs.existsSync(filePath)) {
+      console.error(`File not found: ${filePath}`);
+      process.exit(1);
+    }
+    if (!filePath.endsWith('.md')) {
+      console.error(`File must be a .md file: ${filePath}`);
+      process.exit(1);
+    }
+    filePaths.push(filePath);
   }
 
   const session = process.env.ITERM_SESSION_ID || '';
 
-  try {
-    // Pre-initialize the file state and link the session immediately,
-    // so CLI commands (next, reply, etc.) work right away without
-    // waiting for the browser's WebSocket to connect.
-    const qs = new URLSearchParams({ filePath });
-    if (session) qs.set('session', session);
-    await fetch(`http://localhost:${PORT}/api/file?${qs.toString()}`);
-  } catch {
-    console.error(`Error: daemon is not running on port ${PORT}. Start it with: md-annotate`);
-    process.exit(1);
-  }
+  for (const filePath of filePaths) {
+    try {
+      // Pre-initialize the file state and link the session immediately,
+      // so CLI commands (next, reply, etc.) work right away without
+      // waiting for the browser's WebSocket to connect.
+      const qs = new URLSearchParams({ filePath });
+      if (session) qs.set('session', session);
+      await fetch(`http://localhost:${PORT}/api/file?${qs.toString()}`);
+    } catch {
+      console.error(`Error: daemon is not running on port ${PORT}. Start it with: md-annotate`);
+      process.exit(1);
+    }
 
-  const params = new URLSearchParams({ file: filePath });
-  if (session) params.set('session', session);
-  const url = `http://localhost:${PORT}?${params.toString()}`;
-  open(url);
-  console.log(`Opened ${filePath}`);
+    const params = new URLSearchParams({ file: filePath });
+    if (session) params.set('session', session);
+    const url = `http://localhost:${PORT}?${params.toString()}`;
+    open(url);
+    console.log(`Opened ${filePath}`);
+  }
 }
 
 if (args[0] === 'open') {

@@ -250,20 +250,34 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
   });
 
-  // POST /api/reply?session=... — CLI: md-annotate reply <id> "text"
-  router.post('/reply', (req, res) => {
+  // Helper: get session from query, find annotation across all linked files
+  function findAnnotationForSession(
+    req: { query: Record<string, unknown>; body: unknown },
+    res: import('express').Response
+  ): { session: string; filePath: string; svc: ReturnType<typeof fileManager.getAnnotationService>; annotationId: string } | null {
     const session = typeof req.query.session === 'string' ? req.query.session : null;
     if (!session) {
       res.status(400).json({ error: 'session query parameter is required' });
-      return;
+      return null;
     }
 
-    const filePath = fileManager.getFileForSession(session);
-    if (!filePath) {
-      res.status(404).json({ error: 'No file associated with this session' });
-      return;
+    const { annotationId } = req.body as { annotationId: string };
+    if (!annotationId) {
+      res.status(400).json({ error: 'annotationId is required' });
+      return null;
     }
 
+    const found = fileManager.findAnnotation(session, annotationId);
+    if (!found) {
+      res.status(404).json({ error: 'Annotation not found in any file for this session' });
+      return null;
+    }
+
+    return { session, ...found, annotationId };
+  }
+
+  // POST /api/reply?session=... — CLI: md-annotate reply <id> "text"
+  router.post('/reply', (req, res) => {
     const { annotationId, text, resolve } = req.body as {
       annotationId: string;
       text: string;
@@ -274,23 +288,25 @@ export function createApiRouter(fileManager: FileManager): Router {
       return;
     }
 
+    const ctx = findAnnotationForSession(req, res);
+    if (!ctx) return;
+
     try {
-      fileManager.ensureFresh(filePath);
-      const svc = fileManager.getAnnotationService(filePath);
-      const comment = svc.addComment(annotationId, 'claude', text);
+      fileManager.ensureFresh(ctx.filePath);
+      const comment = ctx.svc.addComment(annotationId, 'claude', text);
       if (!comment) {
         res.status(404).json({ error: 'Annotation not found' });
         return;
       }
 
       // Auto-clear working state when Claude replies
-      svc.update(annotationId, {
+      ctx.svc.update(annotationId, {
         ...(resolve ? { status: 'resolved' as const } : {}),
         working: false,
       });
 
-      fileManager.broadcastAnnotations(filePath);
-      const annotation = svc.getById(annotationId);
+      fileManager.broadcastAnnotations(ctx.filePath);
+      const annotation = ctx.svc.getById(annotationId);
       res.json({ annotationId, status: annotation?.status, comment });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -300,28 +316,12 @@ export function createApiRouter(fileManager: FileManager): Router {
 
   // POST /api/resolve?session=... — CLI: md-annotate resolve <id>
   router.post('/resolve', (req, res) => {
-    const session = typeof req.query.session === 'string' ? req.query.session : null;
-    if (!session) {
-      res.status(400).json({ error: 'session query parameter is required' });
-      return;
-    }
-
-    const filePath = fileManager.getFileForSession(session);
-    if (!filePath) {
-      res.status(404).json({ error: 'No file associated with this session' });
-      return;
-    }
-
-    const { annotationId } = req.body as { annotationId: string };
-    if (!annotationId) {
-      res.status(400).json({ error: 'annotationId is required' });
-      return;
-    }
+    const ctx = findAnnotationForSession(req, res);
+    if (!ctx) return;
 
     try {
-      fileManager.ensureFresh(filePath);
-      const svc = fileManager.getAnnotationService(filePath);
-      const existing = svc.getById(annotationId);
+      fileManager.ensureFresh(ctx.filePath);
+      const existing = ctx.svc.getById(ctx.annotationId);
       if (!existing) {
         res.status(404).json({ error: 'Annotation not found' });
         return;
@@ -333,9 +333,9 @@ export function createApiRouter(fileManager: FileManager): Router {
         return;
       }
 
-      svc.update(annotationId, { status: 'resolved' });
-      fileManager.broadcastAnnotations(filePath);
-      res.json({ annotationId, status: 'resolved' });
+      ctx.svc.update(ctx.annotationId, { status: 'resolved' });
+      fileManager.broadcastAnnotations(ctx.filePath);
+      res.json({ annotationId: ctx.annotationId, status: 'resolved' });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: message });
@@ -344,34 +344,18 @@ export function createApiRouter(fileManager: FileManager): Router {
 
   // POST /api/start?session=... — CLI: md-annotate start <id>
   router.post('/start', (req, res) => {
-    const session = typeof req.query.session === 'string' ? req.query.session : null;
-    if (!session) {
-      res.status(400).json({ error: 'session query parameter is required' });
-      return;
-    }
-
-    const filePath = fileManager.getFileForSession(session);
-    if (!filePath) {
-      res.status(404).json({ error: 'No file associated with this session' });
-      return;
-    }
-
-    const { annotationId } = req.body as { annotationId: string };
-    if (!annotationId) {
-      res.status(400).json({ error: 'annotationId is required' });
-      return;
-    }
+    const ctx = findAnnotationForSession(req, res);
+    if (!ctx) return;
 
     try {
-      const svc = fileManager.getAnnotationService(filePath);
-      const annotation = svc.update(annotationId, { working: true });
+      const annotation = ctx.svc.update(ctx.annotationId, { working: true });
       if (!annotation) {
         res.status(404).json({ error: 'Annotation not found' });
         return;
       }
 
-      fileManager.broadcastAnnotations(filePath);
-      res.json({ annotationId, working: true });
+      fileManager.broadcastAnnotations(ctx.filePath);
+      res.json({ annotationId: ctx.annotationId, working: true });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: message });
@@ -380,34 +364,18 @@ export function createApiRouter(fileManager: FileManager): Router {
 
   // POST /api/end?session=... — CLI: md-annotate end <id>
   router.post('/end', (req, res) => {
-    const session = typeof req.query.session === 'string' ? req.query.session : null;
-    if (!session) {
-      res.status(400).json({ error: 'session query parameter is required' });
-      return;
-    }
-
-    const filePath = fileManager.getFileForSession(session);
-    if (!filePath) {
-      res.status(404).json({ error: 'No file associated with this session' });
-      return;
-    }
-
-    const { annotationId } = req.body as { annotationId: string };
-    if (!annotationId) {
-      res.status(400).json({ error: 'annotationId is required' });
-      return;
-    }
+    const ctx = findAnnotationForSession(req, res);
+    if (!ctx) return;
 
     try {
-      const svc = fileManager.getAnnotationService(filePath);
-      const annotation = svc.update(annotationId, { working: false });
+      const annotation = ctx.svc.update(ctx.annotationId, { working: false });
       if (!annotation) {
         res.status(404).json({ error: 'Annotation not found' });
         return;
       }
 
-      fileManager.broadcastAnnotations(filePath);
-      res.json({ annotationId, working: false });
+      fileManager.broadcastAnnotations(ctx.filePath);
+      res.json({ annotationId: ctx.annotationId, working: false });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: message });
@@ -415,7 +383,7 @@ export function createApiRouter(fileManager: FileManager): Router {
   });
 
   // POST /api/next?session=... — CLI: md-annotate next
-  // Returns the oldest pending annotation and marks it working.
+  // Returns the oldest pending annotation across all linked files.
   router.post('/next', (req, res) => {
     const session = typeof req.query.session === 'string' ? req.query.session : null;
     if (!session) {
@@ -423,41 +391,43 @@ export function createApiRouter(fileManager: FileManager): Router {
       return;
     }
 
-    const filePath = fileManager.getFileForSession(session);
-    if (!filePath) {
-      res.status(404).json({ error: 'No file associated with this session' });
+    const filePaths = fileManager.getFilesForSession(session);
+    if (filePaths.length === 0) {
+      res.status(404).json({ error: 'No files associated with this session' });
       return;
     }
 
     try {
-      // Sync file cache eagerly so annotation offsets are up-to-date
-      // even if chokidar's stabilization delay hasn't fired yet.
-      fileManager.ensureFresh(filePath);
+      // Collect pending annotations across all files
+      const allPending: Array<{ filePath: string; annotation: import('../../shared/types.js').Annotation }> = [];
+      for (const fp of filePaths) {
+        fileManager.ensureFresh(fp);
+        const svc = fileManager.getAnnotationService(fp);
+        for (const a of svc.getAll()) {
+          if (a.status !== 'open') continue;
+          if (a.working) continue;
+          const last = a.comments[a.comments.length - 1];
+          if (last && last.author === 'user') {
+            allPending.push({ filePath: fp, annotation: a });
+          }
+        }
+      }
 
-      const svc = fileManager.getAnnotationService(filePath);
-      const pending = svc.getAll().filter((a) => {
-        if (a.status !== 'open') return false;
-        if (a.working) return false;
-        // Pending if the last comment is from a user (needs Claude's response)
-        const last = a.comments[a.comments.length - 1];
-        return last && last.author === 'user';
-      });
-
-      if (pending.length === 0) {
-        res.json({ filePath, annotation: null, remaining: 0 });
+      if (allPending.length === 0) {
+        res.json({ filePath: filePaths[0], annotation: null, remaining: 0 });
         return;
       }
 
       // Oldest first
-      pending.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      const next = pending[0];
+      allPending.sort((a, b) => new Date(a.annotation.createdAt).getTime() - new Date(b.annotation.createdAt).getTime());
+      const next = allPending[0];
 
-      svc.update(next.id, { working: true });
-      fileManager.broadcastAnnotations(filePath);
+      const svc = fileManager.getAnnotationService(next.filePath);
+      svc.update(next.annotation.id, { working: true });
+      fileManager.broadcastAnnotations(next.filePath);
 
-      // Re-read after update to get fresh data
-      const updated = svc.getById(next.id)!;
-      res.json({ filePath, annotation: updated, remaining: pending.length - 1 });
+      const updated = svc.getById(next.annotation.id)!;
+      res.json({ filePath: next.filePath, annotation: updated, remaining: allPending.length - 1 });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: message });
@@ -472,22 +442,26 @@ export function createApiRouter(fileManager: FileManager): Router {
       return;
     }
 
-    const filePath = fileManager.getFileForSession(session);
-    if (!filePath) {
-      res.status(404).json({ error: 'No file associated with this session' });
+    const filePaths = fileManager.getFilesForSession(session);
+    if (filePaths.length === 0) {
+      res.status(404).json({ error: 'No files associated with this session' });
       return;
     }
 
     try {
-      fileManager.ensureFresh(filePath);
-      const svc = fileManager.getAnnotationService(filePath);
-      const annotations = svc.getAll().filter((a) => {
-        if (a.status !== 'open') return false;
-        // Pending if the last comment is from a user (needs Claude's response)
-        const last = a.comments[a.comments.length - 1];
-        return last && last.author === 'user';
-      });
-      res.json({ filePath, annotations });
+      const allAnnotations: import('../../shared/types.js').Annotation[] = [];
+      for (const fp of filePaths) {
+        fileManager.ensureFresh(fp);
+        const svc = fileManager.getAnnotationService(fp);
+        for (const a of svc.getAll()) {
+          if (a.status !== 'open') continue;
+          const last = a.comments[a.comments.length - 1];
+          if (last && last.author === 'user') {
+            allAnnotations.push(a);
+          }
+        }
+      }
+      res.json({ filePaths, annotations: allAnnotations });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: message });
