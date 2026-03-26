@@ -115,7 +115,7 @@
   height: 16px;
 }
 
-.btn-danger {
+.delete-resolved-confirm .btn-danger {
   background: var(--danger);
   color: white;
   border: 1px solid var(--danger);
@@ -123,7 +123,7 @@
   cursor: pointer;
 }
 
-.btn-danger:hover {
+.delete-resolved-confirm .btn-danger:hover {
   background: #a91d24;
 }
 
