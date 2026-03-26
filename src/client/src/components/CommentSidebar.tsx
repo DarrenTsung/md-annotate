@@ -27,7 +27,10 @@ export function CommentSidebar({
   );
 
   const openAnnotations = sorted.filter((a) => a.status === 'open');
-  const resolvedAnnotations = sorted.filter((a) => a.status === 'resolved');
+  // Resolved: newest first (most recently resolved at top)
+  const resolvedAnnotations = [...annotations]
+    .filter((a) => a.status === 'resolved')
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   return (
     <aside className="comment-sidebar">

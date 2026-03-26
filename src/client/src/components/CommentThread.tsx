@@ -39,6 +39,29 @@ export function CommentThread({
   }
 
   const isResolved = annotation.status === 'resolved';
+  const collapsed = isResolved && !isActive;
+
+  if (collapsed) {
+    const quote = annotation.selectedText.length > 40
+      ? annotation.selectedText.slice(0, 37) + '...'
+      : annotation.selectedText;
+    return (
+      <div
+        className="comment-thread resolved collapsed"
+        data-annotation-id={annotation.id}
+        tabIndex={0}
+        onClick={onActivate}
+      >
+        <svg className="collapsed-check" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3.5 8.5L6.5 11.5L12.5 4.5"/>
+        </svg>
+        <span className="collapsed-quote">{quote}</span>
+        <span className="collapsed-meta">
+          {annotation.comments.length} {annotation.comments.length === 1 ? 'message' : 'messages'}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div
