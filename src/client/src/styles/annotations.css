@@ -124,7 +124,7 @@
 }
 
 .btn-danger:hover {
-  opacity: 0.9;
+  background: #a91d24;
 }
 
 /* Comment thread */
