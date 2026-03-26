@@ -57,28 +57,39 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
 
   const api = useMemo(() => createApi(filePath, session), [filePath, session]);
 
+  // Fetch all data from the server (used on initial load and bfcache restore)
+  const refreshData = useCallback(async () => {
+    try {
+      const [file, anns, status] = await Promise.all([
+        api.getFile(),
+        api.getAnnotations(),
+        api.getClaudeStatus(),
+      ]);
+      setFileData(file);
+      setAnnotations(anns);
+      setClaudeConnected(status.connected);
+      setVersions(file.versions);
+      setLastEdited(file.lastEdited);
+    } catch (err) {
+      console.error('Failed to load data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
+
   // Initial data fetch
+  useEffect(() => { refreshData(); }, [refreshData]);
+
+  // Re-fetch when restored from browser back-forward cache
   useEffect(() => {
-    async function load() {
-      try {
-        const [file, anns, status] = await Promise.all([
-          api.getFile(),
-          api.getAnnotations(),
-          api.getClaudeStatus(),
-        ]);
-        setFileData(file);
-        setAnnotations(anns);
-        setClaudeConnected(status.connected);
-        setVersions(file.versions);
-        setLastEdited(file.lastEdited);
-      } catch (err) {
-        console.error('Failed to load initial data:', err);
-      } finally {
-        setLoading(false);
+    function handlePageShow(e: PageTransitionEvent) {
+      if (e.persisted) {
+        refreshData();
       }
     }
-    load();
-  }, [api]);
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, [refreshData]);
 
   // WebSocket connection — subscribe to the specific file
   useEffect(() => {
