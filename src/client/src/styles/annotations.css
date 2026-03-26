@@ -87,6 +87,7 @@
   border-radius: 3px;
   opacity: 0.25;
   transition: opacity 0.15s;
+  line-height: 1;
 }
 
 .sidebar-divider:hover .delete-resolved-btn {
@@ -103,12 +104,14 @@
   gap: 4px;
 }
 
-.btn-xs {
+.delete-resolved-confirm .btn {
   font-size: 10px;
-  padding: 1px 6px;
+  padding: 0 6px;
   text-transform: none;
   letter-spacing: 0;
   font-weight: 500;
+  line-height: 16px;
+  height: 16px;
 }
 
 .btn-danger {
