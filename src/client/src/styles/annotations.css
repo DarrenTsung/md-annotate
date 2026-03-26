@@ -249,24 +249,29 @@
 
 .comment-text code {
   background: var(--bg-secondary);
-  padding: 1px 4px;
+  padding: 0.15em 0.35em;
   border-radius: 3px;
-  font-size: 0.9em;
+  border: 1px solid var(--border);
+  font-size: 0.84em;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
 .comment-text pre {
   background: var(--bg-secondary);
-  padding: 6px 8px;
-  border-radius: 4px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
   overflow-x: auto;
   margin: 4px 0;
 }
 
 .comment-text pre code {
   background: none;
+  border: none;
   padding: 0;
-  font-size: 0.85em;
+  font-size: 0.84em;
   white-space: pre;
+  line-height: 1.45;
 }
 
 @keyframes comment-in {
