@@ -110,7 +110,7 @@ export function CommentThread({
                   : annotation.selectedText}
               </blockquote>
             )}
-            <div className="comment-text">{comment.text}</div>
+            <div className="comment-text" dangerouslySetInnerHTML={{ __html: renderCommentMarkdown(comment.text) }} />
           </div>
         ))}
       </div>
@@ -126,6 +126,40 @@ export function CommentThread({
       )}
     </div>
   );
+}
+
+/**
+ * Lightweight inline markdown renderer for comment text.
+ * Supports: fenced code blocks, inline code, bold, italic, line breaks.
+ */
+function renderCommentMarkdown(text: string): string {
+  // Escape HTML first
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  // Extract fenced code blocks before processing inline markdown
+  const blocks: string[] = [];
+  const withPlaceholders = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, _lang, code) => {
+    blocks.push(`<pre><code>${esc(code.replace(/\n$/, ''))}</code></pre>`);
+    return `\x00BLOCK${blocks.length - 1}\x00`;
+  });
+
+  // Process inline markdown on non-code-block parts
+  const rendered = withPlaceholders
+    .split(/(\x00BLOCK\d+\x00)/)
+    .map((part) => {
+      const blockMatch = part.match(/^\x00BLOCK(\d+)\x00$/);
+      if (blockMatch) return blocks[parseInt(blockMatch[1], 10)];
+      // Inline: code, bold, italic, line breaks
+      return esc(part)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+    })
+    .join('');
+
+  return rendered;
 }
 
 function isPending(annotation: Annotation): boolean {
