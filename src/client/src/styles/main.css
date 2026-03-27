@@ -435,12 +435,17 @@ del.diff-removed {
   background: rgba(248, 81, 73, 0.1);
   color: #9a3030;
   text-decoration: line-through;
+  text-decoration-color: rgba(154, 48, 48, 0.4);
   padding: 2px 8px;
   border-left: 3px solid rgba(248, 81, 73, 0.4);
   margin: 2px 0;
   white-space: pre-wrap;
-  font-size: 0.93em;
 }
+
+/* Collapse margins on rendered HTML inside removed hunks */
+del.diff-removed > :first-child { margin-top: 0; }
+del.diff-removed > :last-child { margin-bottom: 0; }
+del.diff-removed p { margin: 0; }
 
 /* Version dots in toolbar */
 .toolbar-versions {

@@ -1,6 +1,37 @@
 import type { DiffHunk } from '@shared/types.js';
 
 /**
+ * Unwrap list containers so removed content renders at the same level as the
+ * surrounding document, with the number/bullet prepended as text.
+ * e.g. `<ol start="2"><li><p><strong>X</strong></p></li></ol>`
+ * becomes `<p>2. <strong>X</strong></p>`.
+ */
+function unwrapLists(container: HTMLElement): void {
+  const list = container.querySelector('ol, ul');
+  if (!list) return;
+
+  const items = Array.from(list.querySelectorAll(':scope > li'));
+  if (items.length === 0) return;
+
+  const isOrdered = list.tagName === 'OL';
+  const startNum = isOrdered ? (list as HTMLOListElement).start || 1 : 0;
+
+  for (let i = 0; i < items.length; i++) {
+    const li = items[i];
+    const prefix = isOrdered ? `${startNum + i}. ` : '• ';
+    // Prepend inside the first <p> if present, otherwise directly in <li>
+    const firstP = li.querySelector(':scope > p');
+    const target = firstP || li;
+    target.insertBefore(document.createTextNode(prefix), target.firstChild);
+
+    while (li.firstChild) {
+      list.parentNode?.insertBefore(li.firstChild, list);
+    }
+  }
+  list.remove();
+}
+
+/**
  * Apply a diff overlay to rendered markdown. Adds `.diff-added` to blocks
  * with added content, and inserts `<del class="diff-removed">` elements for
  * removed text. Returns a cleanup function.
@@ -58,7 +89,17 @@ export function applyDiffOverlay(
 
       const del = document.createElement('del');
       del.className = 'diff-removed';
-      del.textContent = hunk.value;
+      if (hunk.renderedValue) {
+        // renderMarkdown wraps content in block elements (e.g. <ol><li>...</li></ol>).
+        // Parse and unwrap: extract inner content from single-child wrappers
+        // so the removed text sits at the same indentation level as surrounding content.
+        const tmp = document.createElement('div');
+        tmp.innerHTML = hunk.renderedValue;
+        unwrapLists(tmp);
+        del.innerHTML = tmp.innerHTML;
+      } else {
+        del.textContent = hunk.value;
+      }
 
       if (insertBefore) {
         insertBefore.parentNode?.insertBefore(del, insertBefore);

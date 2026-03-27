@@ -67,6 +67,8 @@ export interface VersionEntry {
 export interface DiffHunk {
   type: 'added' | 'removed';
   value: string;
+  /** Rendered HTML for removed hunks (so the overlay shows formatted content, not raw markdown). */
+  renderedValue?: string;
   newOffset: number;
   oldOffset: number;
 }
