@@ -52,7 +52,7 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
   const [versionPreview, setVersionPreview] = useState<{ rawMarkdown: string; renderedHtml: string } | null>(null);
   const previewCacheRef = useRef<Map<string, { rawMarkdown: string; renderedHtml: string; hunks: DiffHunk[] }>>(new Map());
   const autoShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autoShowHunksRef = useRef<DiffHunk[]>([]);
+  const autoShowBaseVersionRef = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   const api = useMemo(() => createApi(filePath, session), [filePath, session]);
@@ -152,16 +152,28 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
               });
               setLastEdited(msg.lastEdited);
 
-              // Show overlay immediately, accumulating hunks across rapid edits.
-              // Reset the 5s dismiss timer on each new version.
-              autoShowHunksRef.current = [...autoShowHunksRef.current, ...msg.version.hunks];
+              // Show overlay immediately. Track the base version of the editing
+              // burst and fetch a cumulative diff (base snapshot → current) so
+              // removed content from earlier edits doesn't stack up.
+              if (!autoShowBaseVersionRef.current) {
+                autoShowBaseVersionRef.current = msg.version.id;
+              }
               setAutoShowVersionId(msg.version.id);
-              setShownDiffHunks([...autoShowHunksRef.current]);
+
+              // Fetch cumulative diff from the burst's base version
+              const baseId = autoShowBaseVersionRef.current;
+              api.getVersionDiff(baseId).then(({ hunks }) => {
+                setShownDiffHunks(hunks);
+              }).catch(() => {
+                // Fallback: just show this version's hunks
+                setShownDiffHunks(msg.version.hunks);
+              });
+
               if (autoShowTimerRef.current) clearTimeout(autoShowTimerRef.current);
               autoShowTimerRef.current = setTimeout(() => {
                 setAutoShowVersionId(null);
                 setShownDiffHunks(null);
-                autoShowHunksRef.current = [];
+                autoShowBaseVersionRef.current = null;
               }, 5000);
             }
             break;
