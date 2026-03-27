@@ -16,7 +16,7 @@ export class ItermBridge {
 
   /**
    * Queue an annotation to be sent to a specific iTerm session.
-   * Debounces with a 2.5s window per session.
+   * Flushes immediately.
    */
   queueAnnotation(
     sessionId: string,
@@ -39,9 +39,11 @@ export class ItermBridge {
       clearTimeout(queue.timer);
     }
 
+    // Flush on next tick to batch multiple annotations from the same
+    // synchronous operation, but don't add a perceptible delay.
     queue.timer = setTimeout(() => {
       this.flush(uuid);
-    }, 2500);
+    }, 0);
   }
 
   /**
