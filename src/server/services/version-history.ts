@@ -35,6 +35,14 @@ export class VersionHistory {
     });
   }
 
+  /**
+   * Strip `<!-- @actions: ... -->` comments and any leading whitespace before
+   * them, so that action button removal doesn't register as a content change.
+   */
+  private static stripActionComments(content: string): string {
+    return content.replace(/\s*<!--\s*@actions:\s*.+?\s*-->/g, '');
+  }
+
   private computeHunks(oldContent: string, newContent: string): { hunks: DiffHunk[]; summary: { linesAdded: number; linesRemoved: number } } {
     // Diff on normalized content so renumbered list items match as unchanged,
     // then map results back to original content using character offsets
@@ -84,6 +92,13 @@ export class VersionHistory {
    */
   recordChange(oldContent: string, newContent: string): VersionEntry | null {
     if (oldContent === newContent) return null;
+
+    // If the only difference is action comments, skip version creation
+    // but still update the cached copy.
+    if (VersionHistory.stripActionComments(oldContent) === VersionHistory.stripActionComments(newContent)) {
+      fs.writeFileSync(this.cachedPath, newContent, 'utf-8');
+      return null;
+    }
 
     // Deduplicate: if the new content already matches the cached copy on disk,
     // this is a spurious event (e.g., chokidar double-fire or server restart).
