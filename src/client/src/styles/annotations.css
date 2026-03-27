@@ -256,8 +256,8 @@
 /* Collapsed resolved threads */
 .comment-thread.collapsed {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 2px;
   padding: 5px 8px;
   cursor: pointer;
   min-height: auto;
@@ -265,6 +265,12 @@
 
 .comment-thread.collapsed:hover {
   background: var(--bg-secondary);
+}
+
+.collapsed-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .collapsed-check {
@@ -279,6 +285,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding-left: 6px;
+  border-left: 2px solid var(--border);
 }
 
 .collapsed-meta {
@@ -286,6 +294,15 @@
   font-size: 10px;
   color: var(--text-muted);
   opacity: 0.7;
+}
+
+.collapsed-message {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 20px;
 }
 
 .pending-dot {
