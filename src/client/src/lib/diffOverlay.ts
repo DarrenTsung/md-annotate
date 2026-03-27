@@ -21,12 +21,25 @@ export function applyDiffOverlay(
       const hunkStart = hunk.newOffset;
       const hunkEnd = hunk.newOffset + hunk.value.length;
 
+      // Collect all blocks that overlap with this hunk
+      const matchingBlocks: HTMLElement[] = [];
       for (const block of blockElements) {
         const blockStart = parseInt(block.getAttribute('data-source-start')!, 10);
         const blockEnd = parseInt(block.getAttribute('data-source-end')!, 10);
 
-        // Check overlap
         if (hunkStart < blockEnd && hunkEnd > blockStart) {
+          matchingBlocks.push(block);
+        }
+      }
+
+      // Only highlight the most specific blocks: skip any block that has
+      // a descendant also in the matching set. This prevents highlighting
+      // an entire <ol> when only one <li> was added.
+      for (const block of matchingBlocks) {
+        const hasMoreSpecificChild = matchingBlocks.some(
+          other => other !== block && block.contains(other)
+        );
+        if (!hasMoreSpecificChild) {
           block.classList.add('diff-added');
           addedElements.push(block);
         }

@@ -24,8 +24,24 @@ export class VersionHistory {
     fs.mkdirSync(this.snapshotsDir, { recursive: true });
   }
 
+  /**
+   * Normalize ordered-list numbering so that renumbered items (e.g. "3." → "2."
+   * after a deletion) are treated as unchanged by the diff. Replaces digits with
+   * zeros of the same width to preserve character offsets.
+   */
+  private static normalizeListNumbering(content: string): string {
+    return content.replace(/^(\s*)\d+(?=\.\s)/gm, (match, indent: string) => {
+      return indent + '0'.repeat(match.length - indent.length);
+    });
+  }
+
   private computeHunks(oldContent: string, newContent: string): { hunks: DiffHunk[]; summary: { linesAdded: number; linesRemoved: number } } {
-    const changes = diffLines(oldContent, newContent);
+    // Diff on normalized content so renumbered list items match as unchanged,
+    // then map results back to original content using character offsets
+    // (normalization preserves character widths).
+    const normalizedOld = VersionHistory.normalizeListNumbering(oldContent);
+    const normalizedNew = VersionHistory.normalizeListNumbering(newContent);
+    const changes = diffLines(normalizedOld, normalizedNew);
     const hunks: DiffHunk[] = [];
     let newOffset = 0;
     let oldOffset = 0;
@@ -33,17 +49,18 @@ export class VersionHistory {
     let linesRemoved = 0;
 
     for (const part of changes) {
+      const len = part.value.length;
       if (part.added) {
-        hunks.push({ type: 'added', value: part.value, newOffset, oldOffset });
+        hunks.push({ type: 'added', value: newContent.substring(newOffset, newOffset + len), newOffset, oldOffset });
         linesAdded += part.count ?? 0;
-        newOffset += part.value.length;
+        newOffset += len;
       } else if (part.removed) {
-        hunks.push({ type: 'removed', value: part.value, newOffset, oldOffset });
+        hunks.push({ type: 'removed', value: oldContent.substring(oldOffset, oldOffset + len), newOffset, oldOffset });
         linesRemoved += part.count ?? 0;
-        oldOffset += part.value.length;
+        oldOffset += len;
       } else {
-        newOffset += part.value.length;
-        oldOffset += part.value.length;
+        newOffset += len;
+        oldOffset += len;
       }
     }
 
