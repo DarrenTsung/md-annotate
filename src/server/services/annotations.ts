@@ -47,6 +47,11 @@ export class AnnotationService {
     fs.writeFileSync(this.sidecarPath, JSON.stringify(data, null, 2) + '\n');
   }
 
+  /** Remove all annotations (used when the file is deleted and recreated). */
+  clear(): void {
+    try { fs.unlinkSync(this.sidecarPath); } catch { /* already gone */ }
+  }
+
   getAll(): Annotation[] {
     return this.read().annotations.filter((a) => a.status !== 'deleted');
   }

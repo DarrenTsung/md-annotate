@@ -25,6 +25,8 @@ interface FileState {
   versionHistory: VersionHistory;
   mdWatcher: FSWatcher;
   sidecarWatcher: FSWatcher;
+  /** Inode at creation time, used to detect delete+recreate */
+  inode: number;
   /** iTerm session IDs associated with this file */
   sessions: Set<string>;
   /** WebSocket clients subscribed to this file */
@@ -86,6 +88,7 @@ export class FileManager {
     const annotationService = new AnnotationService(filePath);
     const versionHistory = new VersionHistory(filePath);
     versionHistory.initBaseline(rawMarkdown);
+    const inode = fs.statSync(filePath).ino;
 
     state = {
       rawMarkdown,
@@ -94,6 +97,7 @@ export class FileManager {
       versionHistory,
       mdWatcher: null!,
       sidecarWatcher: null!,
+      inode,
       sessions: new Set(),
       clients: new Set(),
       cleanupTimer: null,
@@ -110,6 +114,30 @@ export class FileManager {
     mdWatcher.on('change', () => {
       console.log(`[${filePath}] Markdown changed, reloading...`);
       const newContent = fs.readFileSync(filePath, 'utf-8');
+
+      // Detect delete+recreate by checking if the inode changed
+      const currentInode = fs.statSync(filePath).ino;
+      if (currentInode !== state!.inode) {
+        console.log(`[${filePath}] Inode changed (${state!.inode} → ${currentInode}), file was recreated — resetting state`);
+        state!.inode = currentInode;
+        state!.rawMarkdown = newContent;
+        state!.renderedHtml = renderMarkdown(newContent);
+        state!.annotationService.clear();
+        state!.versionHistory.initBaseline(newContent);
+        state!.sessions.clear();
+        this.broadcastToFile(state!, {
+          type: 'file-changed',
+          filePath,
+          rawMarkdown: state!.rawMarkdown,
+          renderedHtml: state!.renderedHtml,
+        });
+        this.broadcastToFile(state!, {
+          type: 'annotations-changed',
+          filePath,
+          annotations: [],
+        });
+        return;
+      }
 
       // Record version diff BEFORE updating state
       const version = state!.versionHistory.recordChange(state!.rawMarkdown, newContent);
