@@ -5,6 +5,7 @@ import { applyHighlights, applyPendingHighlight } from '../lib/highlight.js';
 import { applyDiffOverlay } from '../lib/diffOverlay.js';
 import { useTextSelection } from '../hooks/useTextSelection.js';
 import { SelectionPopover } from './SelectionPopover.js';
+import { Minimap } from './Minimap.js';
 import type { SourceOffset } from '../lib/offsets.js';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
@@ -270,6 +271,7 @@ export function MarkdownViewer({
         className="markdown-viewer"
         dangerouslySetInnerHTML={htmlPayload}
       />
+      <Minimap contentRef={containerRef} />
       {selection && (
         <SelectionPopover
           rect={selection.rect}

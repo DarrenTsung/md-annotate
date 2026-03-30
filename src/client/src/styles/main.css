@@ -150,6 +150,31 @@ body {
   line-height: 1.6;
 }
 
+/* Minimap */
+.minimap {
+  position: fixed;
+  right: var(--sidebar-width);
+  top: var(--toolbar-height);
+  width: 60px;
+  height: calc(100vh - var(--toolbar-height));
+  cursor: pointer;
+  z-index: 5;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.minimap:hover {
+  opacity: 1;
+}
+
+.minimap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* Markdown content styling */
 .markdown-viewer h1,
 .markdown-viewer h2,
