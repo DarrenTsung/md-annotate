@@ -40,8 +40,11 @@ export function Minimap({ contentRef }: MinimapProps) {
       getComputedStyle(document.documentElement).getPropertyValue('--toolbar-height') || '0'
     );
 
-    // Scale factor: map height represents the full document
-    const scale = mapHeight / docHeight;
+    // Scale factor: cap at a natural density so short docs don't stretch
+    // to fill the full minimap height. ~0.15 means 1px in the minimap ≈ 7px
+    // in the document, which looks reasonable for most font sizes.
+    const maxScale = 0.15;
+    const scale = Math.min(maxScale, mapHeight / docHeight);
 
     // Clear
     ctx.clearRect(0, 0, mapWidth, mapHeight);
@@ -179,8 +182,11 @@ export function Minimap({ contentRef }: MinimapProps) {
     if (!wrapper || !content) return;
 
     const rect = wrapper.getBoundingClientRect();
-    const ratio = (clientY - rect.top) / rect.height;
     const docHeight = content.scrollHeight;
+    const maxScale = 0.15;
+    const scale = Math.min(maxScale, rect.height / docHeight);
+    const mapContentHeight = docHeight * scale;
+    const ratio = (clientY - rect.top) / mapContentHeight;
     const targetScroll = ratio * docHeight - window.innerHeight / 2;
     window.scrollTo({ top: Math.max(0, targetScroll), behavior: 'auto' });
   }, [contentRef]);
