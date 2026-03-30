@@ -51,10 +51,10 @@ export function MarkdownViewer({
     if (!container) return;
 
     const scrollY = window.scrollY;
-    const cleanup = applyHighlights(container, annotations);
+    const cleanup = applyHighlights(container, annotations, rawMarkdown);
     window.scrollTo(0, scrollY);
     return cleanup;
-  }, [annotations, renderedHtml]);
+  }, [annotations, renderedHtml, rawMarkdown]);
 
   // Toggle active class on marks — separate from highlight injection so
   // clicking a comment never tears down / re-creates the mark elements.
@@ -108,7 +108,8 @@ export function MarkdownViewer({
       container,
       selection.offset.startOffset,
       selection.offset.endOffset,
-      selection.offset.selectedText
+      selection.offset.selectedText,
+      rawMarkdown
     );
     // DOM manipulation can shift scroll; restore it
     window.scrollTo(0, scrollY);

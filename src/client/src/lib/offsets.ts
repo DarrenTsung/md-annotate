@@ -136,7 +136,7 @@ function fuzzyFindInSource(
  * stripping all markdown syntax that doesn't appear in rendered output.
  * Returns an array where map[renderedPos] = rawPos.
  */
-function buildSourceMap(rawBlock: string): number[] {
+export function buildSourceMap(rawBlock: string): number[] {
   const map: number[] = [];
   let i = 0;
   const len = rawBlock.length;

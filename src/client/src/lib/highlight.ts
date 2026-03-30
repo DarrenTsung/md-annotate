@@ -9,6 +9,7 @@
  */
 
 import type { Annotation } from '@shared/types.js';
+import { buildSourceMap } from './offsets.js';
 
 interface HighlightRange {
   annotationId: string;
@@ -26,7 +27,8 @@ interface HighlightRange {
  */
 export function applyHighlights(
   container: HTMLElement,
-  annotations: Annotation[]
+  annotations: Annotation[],
+  rawMarkdown?: string
 ): () => void {
   const ranges = annotations.map(
     (a): HighlightRange => ({
@@ -40,7 +42,7 @@ export function applyHighlights(
     })
   );
 
-  return applyHighlightRanges(container, ranges);
+  return applyHighlightRanges(container, ranges, rawMarkdown);
 }
 
 /**
@@ -51,7 +53,8 @@ export function applyPendingHighlight(
   container: HTMLElement,
   startOffset: number,
   endOffset: number,
-  selectedText?: string
+  selectedText?: string,
+  rawMarkdown?: string
 ): () => void {
   return applyHighlightRanges(container, [
     {
@@ -62,7 +65,7 @@ export function applyPendingHighlight(
       status: 'pending' as 'open',
       className: 'pending-highlight',
     },
-  ]);
+  ], rawMarkdown);
 }
 
 interface HighlightRangeWithClass extends HighlightRange {
@@ -71,7 +74,8 @@ interface HighlightRangeWithClass extends HighlightRange {
 
 function applyHighlightRanges(
   container: HTMLElement,
-  ranges: HighlightRangeWithClass[]
+  ranges: HighlightRangeWithClass[],
+  rawMarkdown?: string
 ): () => void {
   // Sort by start offset
   ranges.sort((a, b) => a.startOffset - b.startOffset);
@@ -96,7 +100,7 @@ function applyHighlightRanges(
         continue;
       }
 
-      highlightTextInElement(el, range, blockStart, marks);
+      highlightTextInElement(el, range, blockStart, marks, rawMarkdown);
     }
   }
 
@@ -131,7 +135,8 @@ function highlightTextInElement(
   element: HTMLElement,
   range: HighlightRangeWithClass,
   blockStartOffset: number,
-  marks: HTMLElement[]
+  marks: HTMLElement[],
+  rawMarkdown?: string
 ): void {
   // Collect all text nodes and build the full rendered text.
   // Skip text inside .action-buttons so highlights don't cover action buttons.
@@ -196,16 +201,33 @@ function highlightTextInElement(
       }
       // Non-stale: selection may span multiple blocks.
       // Highlight the portion of this block that overlaps the selection's
-      // raw offset range, using offset-based positioning as fallback.
+      // raw offset range.
       const overlapStart = Math.max(range.startOffset, blockStartOffset);
       const overlapEnd = Math.min(range.endOffset, blockEnd);
       if (overlapStart >= overlapEnd) return;
 
-      // Map raw offsets to rendered text positions proportionally
-      const rawBlockLength = blockEnd - blockStartOffset;
-      const ratio = rawBlockLength > 0 ? fullText.length / rawBlockLength : 1;
-      matchStart = Math.round((overlapStart - blockStartOffset) * ratio);
-      matchEnd = Math.round((overlapEnd - blockStartOffset) * ratio);
+      // Use source map for accurate raw→rendered offset mapping when
+      // raw markdown is available. Falls back to ratio for legacy data.
+      if (rawMarkdown) {
+        const rawBlock = rawMarkdown.slice(blockStartOffset, blockEnd);
+        const srcMap = buildSourceMap(rawBlock);
+        // Reverse lookup: find the rendered text index for a raw offset
+        const rawToText = (rawOff: number): number => {
+          const relRaw = rawOff - blockStartOffset;
+          // Find the first map entry >= relRaw
+          for (let idx = 0; idx < srcMap.length; idx++) {
+            if (srcMap[idx] >= relRaw) return idx;
+          }
+          return srcMap.length;
+        };
+        matchStart = rawToText(overlapStart);
+        matchEnd = rawToText(overlapEnd);
+      } else {
+        const rawBlockLength = blockEnd - blockStartOffset;
+        const ratio = rawBlockLength > 0 ? fullText.length / rawBlockLength : 1;
+        matchStart = Math.round((overlapStart - blockStartOffset) * ratio);
+        matchEnd = Math.round((overlapEnd - blockStartOffset) * ratio);
+      }
     }
   } else {
     // No selectedText available — fall back to offset-based positioning
