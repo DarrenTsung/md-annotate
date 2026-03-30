@@ -4,20 +4,10 @@ import type {
   CreateAnnotationRequest,
   AddCommentRequest,
   UpdateAnnotationRequest,
-  DiffHunk,
 } from '../../shared/types.js';
 import type { FileManager } from '../services/file-manager.js';
 import { renderMarkdown } from '../services/markdown.js';
-
-/** Enrich removed hunks with rendered HTML so the overlay shows formatted content. */
-function enrichHunks(hunks: DiffHunk[]): DiffHunk[] {
-  return hunks.map((h) => {
-    if (h.type === 'removed') {
-      return { ...h, renderedValue: renderMarkdown(h.value) };
-    }
-    return h;
-  });
-}
+import { enrichHunks } from '../services/diff-enrich.js';
 
 export function createApiRouter(fileManager: FileManager): Router {
   const router = Router();

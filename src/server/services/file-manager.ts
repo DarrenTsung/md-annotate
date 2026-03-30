@@ -6,16 +6,11 @@ import { renderMarkdown } from './markdown.js';
 import { AnnotationService } from './annotations.js';
 import { ItermBridge } from './iterm-bridge.js';
 import { VersionHistory } from './version-history.js';
+import { enrichHunks } from './diff-enrich.js';
 import type { WsMessage, VersionEntry } from '../../shared/types.js';
 
-/** Enrich removed hunks with rendered HTML for the diff overlay. */
 function enrichVersionHunks(version: VersionEntry): VersionEntry {
-  return {
-    ...version,
-    hunks: version.hunks.map((h) =>
-      h.type === 'removed' ? { ...h, renderedValue: renderMarkdown(h.value) } : h
-    ),
-  };
+  return { ...version, hunks: enrichHunks(version.hunks) };
 }
 
 interface FileState {

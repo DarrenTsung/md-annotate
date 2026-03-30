@@ -447,6 +447,20 @@ del.diff-removed > :first-child { margin-top: 0; }
 del.diff-removed > :last-child { margin-bottom: 0; }
 del.diff-removed p { margin: 0; }
 
+/* Inline word-level diff for modified blocks */
+.diff-modified del {
+  background: rgba(248, 81, 73, 0.15);
+  color: #9a3030;
+  text-decoration: line-through;
+  text-decoration-color: rgba(154, 48, 48, 0.4);
+}
+
+.diff-modified ins {
+  background: rgba(46, 160, 67, 0.2);
+  color: #1a6b2f;
+  text-decoration: none;
+}
+
 /* Version dots in toolbar */
 .toolbar-versions {
   display: flex;

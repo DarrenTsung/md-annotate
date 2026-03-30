@@ -42,42 +42,61 @@ export function applyDiffOverlay(
 ): () => void {
   const addedElements: HTMLElement[] = [];
   const insertedElements: HTMLElement[] = [];
+  const hiddenElements: { el: HTMLElement; orig: string }[] = [];
 
   const blockElements = Array.from(
     container.querySelectorAll('[data-source-start]')
   ) as HTMLElement[];
 
+  /** Find the most specific block(s) overlapping [start, end). */
+  function findBlocks(start: number, end: number): HTMLElement[] {
+    const matching: HTMLElement[] = [];
+    for (const block of blockElements) {
+      const bs = parseInt(block.getAttribute('data-source-start')!, 10);
+      const be = parseInt(block.getAttribute('data-source-end')!, 10);
+      if (start < be && end > bs) matching.push(block);
+    }
+    return matching.filter(
+      (block) => !matching.some((o) => o !== block && block.contains(o))
+    );
+  }
+
   for (const hunk of hunks) {
     if (hunk.type === 'added') {
-      const hunkStart = hunk.newOffset;
-      const hunkEnd = hunk.newOffset + hunk.value.length;
-
-      // Collect all blocks that overlap with this hunk
-      const matchingBlocks: HTMLElement[] = [];
-      for (const block of blockElements) {
-        const blockStart = parseInt(block.getAttribute('data-source-start')!, 10);
-        const blockEnd = parseInt(block.getAttribute('data-source-end')!, 10);
-
-        if (hunkStart < blockEnd && hunkEnd > blockStart) {
-          matchingBlocks.push(block);
-        }
+      for (const block of findBlocks(hunk.newOffset, hunk.newOffset + hunk.value.length)) {
+        block.classList.add('diff-added');
+        addedElements.push(block);
       }
+    } else if (hunk.type === 'modified' && hunk.renderedValue) {
+      // Replace the matching block with the inline-diff rendered version.
+      const blocks = findBlocks(hunk.newOffset, hunk.newOffset + hunk.value.length);
+      for (const block of blocks) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = hunk.renderedValue;
+        unwrapLists(tmp);
 
-      // Only highlight the most specific blocks: skip any block that has
-      // a descendant also in the matching set. This prevents highlighting
-      // an entire <ol> when only one <li> was added.
-      for (const block of matchingBlocks) {
-        const hasMoreSpecificChild = matchingBlocks.some(
-          other => other !== block && block.contains(other)
-        );
-        if (!hasMoreSpecificChild) {
-          block.classList.add('diff-added');
-          addedElements.push(block);
+        // Extract the inner content, stripping the outermost wrapper tag
+        // (e.g. <p>) so it merges cleanly into the existing block level.
+        const inner = tmp.querySelector('p, li');
+        const html = inner ? inner.innerHTML : tmp.innerHTML;
+
+        const modified = document.createElement(block.tagName.toLowerCase());
+        modified.className = 'diff-modified';
+        // Copy relevant attributes
+        for (const attr of block.attributes) {
+          if (attr.name.startsWith('data-source')) {
+            modified.setAttribute(attr.name, attr.value);
+          }
         }
+        modified.innerHTML = html;
+
+        block.parentNode?.insertBefore(modified, block);
+        insertedElements.push(modified);
+        hiddenElements.push({ el: block, orig: block.style.display });
+        block.style.display = 'none';
       }
     } else if (hunk.type === 'removed') {
-      // Find insertion point: the first block whose source-start >= hunk.newOffset,
-      // or insert after the last block if none found
+      // Find insertion point: the first block whose source-start >= hunk.newOffset
       let insertBefore: HTMLElement | null = null;
       for (const block of blockElements) {
         const blockStart = parseInt(block.getAttribute('data-source-start')!, 10);
@@ -90,9 +109,6 @@ export function applyDiffOverlay(
       const del = document.createElement('del');
       del.className = 'diff-removed';
       if (hunk.renderedValue) {
-        // renderMarkdown wraps content in block elements (e.g. <ol><li>...</li></ol>).
-        // Parse and unwrap: extract inner content from single-child wrappers
-        // so the removed text sits at the same indentation level as surrounding content.
         const tmp = document.createElement('div');
         tmp.innerHTML = hunk.renderedValue;
         unwrapLists(tmp);
@@ -104,7 +120,6 @@ export function applyDiffOverlay(
       if (insertBefore) {
         insertBefore.parentNode?.insertBefore(del, insertBefore);
       } else if (blockElements.length > 0) {
-        // Append after the last block
         const lastBlock = blockElements[blockElements.length - 1];
         lastBlock.parentNode?.insertBefore(del, lastBlock.nextSibling);
       } else {
@@ -120,6 +135,9 @@ export function applyDiffOverlay(
     }
     for (const el of insertedElements) {
       el.parentNode?.removeChild(el);
+    }
+    for (const { el, orig } of hiddenElements) {
+      el.style.display = orig;
     }
   };
 }
