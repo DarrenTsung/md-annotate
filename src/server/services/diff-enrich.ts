@@ -34,7 +34,14 @@ export function enrichHunks(hunks: DiffHunk[]): DiffHunk[] {
       const totalLen = Math.max(removed.value.length, added.value.length);
       const similarity = totalLen > 0 ? unchangedLen / totalLen : 0;
 
-      if (similarity >= 0.4) {
+      // Don't merge into inline diff when the line count changes
+      // drastically (e.g., 1 bullet expanded into 8 subtasks). The
+      // inline diff rendering breaks for these structural changes.
+      const removedLines = removed.value.split('\n').length;
+      const addedLines = added.value.split('\n').length;
+      const lineRatio = Math.max(removedLines, addedLines) / Math.max(1, Math.min(removedLines, addedLines));
+
+      if (similarity >= 0.4 && lineRatio <= 3) {
         // Similar enough: build inline diff markdown, then render.
         // <del>/<ins> tags pass through markdown-it with html: true.
         let combined = '';

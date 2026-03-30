@@ -58,7 +58,7 @@ function getMd(): MarkdownIt {
       },
     });
     mdInstance.use(sourceOffsetPlugin);
-    mdInstance.use(taskLists, { enabled: false, label: true, labelAfter: true });
+    mdInstance.use(taskLists, { enabled: false });
 
     // Add id slugs to headings for anchor links
     const defaultHeadingOpen = mdInstance.renderer.rules.heading_open ||
@@ -110,12 +110,6 @@ function getMd(): MarkdownIt {
 export function renderMarkdown(source: string): string {
   const md = getMd();
   let html = md.render(source);
-  // Trim the leading space inside task list labels so strikethrough
-  // doesn't extend past the text start
-  html = html.replace(
-    /(<label class="task-list-item-label"[^>]*>) /g,
-    '$1'
-  );
   // Replace <!-- @actions: ... --> comments with action buttons.
   // With html: true, markdown-it passes HTML comments through verbatim.
   html = html.replace(

@@ -72,30 +72,44 @@ export function applyDiffOverlay(
         addedElements.push(block);
       }
     } else if (hunk.type === 'modified' && hunk.renderedValue) {
-      // Replace the matching block with the inline-diff rendered version.
+      // Replace the matching block(s) with the inline-diff rendered version.
+      // Insert once before the first block, hide all matching blocks.
       const blocks = findBlocks(hunk.newOffset, hunk.newOffset + hunk.value.length);
-      for (const block of blocks) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = hunk.renderedValue;
-        unwrapLists(tmp);
+      if (blocks.length === 0) continue;
 
-        // Extract the inner content, stripping the outermost wrapper tag
-        // (e.g. <p>) so it merges cleanly into the existing block level.
+      const tmp = document.createElement('div');
+      tmp.innerHTML = hunk.renderedValue;
+      unwrapLists(tmp);
+
+      const firstBlock = blocks[0];
+
+      if (blocks.length === 1) {
+        // Single block: match the tag and extract inner content for clean merge.
         const inner = tmp.querySelector('p, li');
         const html = inner ? inner.innerHTML : tmp.innerHTML;
 
-        const modified = document.createElement(block.tagName.toLowerCase());
+        const modified = document.createElement(firstBlock.tagName.toLowerCase());
         modified.className = 'diff-modified';
-        // Copy relevant attributes
-        for (const attr of block.attributes) {
+        for (const attr of firstBlock.attributes) {
           if (attr.name.startsWith('data-source')) {
             modified.setAttribute(attr.name, attr.value);
           }
         }
         modified.innerHTML = html;
 
-        block.parentNode?.insertBefore(modified, block);
+        firstBlock.parentNode?.insertBefore(modified, firstBlock);
         insertedElements.push(modified);
+      } else {
+        // Multi-block: insert the full rendered content once.
+        const modified = document.createElement('div');
+        modified.className = 'diff-modified';
+        modified.innerHTML = tmp.innerHTML.trim();
+
+        firstBlock.parentNode?.insertBefore(modified, firstBlock);
+        insertedElements.push(modified);
+      }
+
+      for (const block of blocks) {
         hiddenElements.push({ el: block, orig: block.style.display });
         block.style.display = 'none';
       }

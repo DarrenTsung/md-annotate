@@ -279,11 +279,7 @@ body {
   transform: rotate(45deg);
 }
 
-.markdown-viewer .task-list-item-label {
-  margin-left: 0.4em;
-}
-
-.markdown-viewer .task-list-item-checkbox:checked + .task-list-item-label {
+.markdown-viewer li.task-list-item:has(.task-list-item-checkbox:checked) {
   color: var(--text-muted);
   text-decoration: line-through;
 }
