@@ -159,14 +159,14 @@ body {
   height: calc(100vh - var(--toolbar-height));
   cursor: pointer;
   z-index: 5;
-  border-left: 1px solid var(--border);
+  border-left: none;
   background: var(--bg);
   opacity: 0.8;
   transition: opacity 0.15s;
 }
 
 .minimap:hover {
-  opacity: 1;
+  opacity: 0.9;
 }
 
 .minimap canvas {

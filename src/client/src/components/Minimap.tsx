@@ -143,9 +143,6 @@ export function Minimap({ contentRef }: MinimapProps) {
     const vpHeight = viewportHeight * scale;
     ctx.fillStyle = 'rgba(128, 128, 128, 0.12)';
     ctx.fillRect(0, vpTop, mapWidth, vpHeight);
-    ctx.strokeStyle = 'rgba(128, 128, 128, 0.3)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(0.5, vpTop + 0.5, mapWidth - 1, vpHeight - 1);
   }, [contentRef]);
 
   // Repaint on scroll, resize, and content changes
