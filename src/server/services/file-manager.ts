@@ -25,8 +25,10 @@ interface FileState {
   versionHistory: VersionHistory;
   mdWatcher: FSWatcher;
   sidecarWatcher: FSWatcher;
-  /** Inode at creation time, used to detect delete+recreate */
-  inode: number;
+  /** True after an 'unlink' event, cleared on next 'add'. Used to
+   *  distinguish actual delete+recreate from atomic writes (which also
+   *  change the inode but don't fire unlink). */
+  wasDeleted: boolean;
   /** iTerm session IDs associated with this file */
   sessions: Set<string>;
   /** WebSocket clients subscribed to this file */
@@ -88,8 +90,6 @@ export class FileManager {
     const annotationService = new AnnotationService(filePath);
     const versionHistory = new VersionHistory(filePath);
     versionHistory.initBaseline(rawMarkdown);
-    const inode = fs.statSync(filePath).ino;
-
     state = {
       rawMarkdown,
       renderedHtml,
@@ -97,7 +97,7 @@ export class FileManager {
       versionHistory,
       mdWatcher: null!,
       sidecarWatcher: null!,
-      inode,
+      wasDeleted: false,
       sessions: new Set(),
       clients: new Set(),
       cleanupTimer: null,
@@ -111,34 +111,15 @@ export class FileManager {
       awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
     });
 
-    mdWatcher.on('change', () => {
-      console.log(`[${filePath}] Markdown changed, reloading...`);
-      const newContent = fs.readFileSync(filePath, 'utf-8');
+    // Track unlink events to distinguish delete+recreate from atomic writes.
+    // Atomic writes (write temp + rename) change the inode but don't fire
+    // unlink, so we only reset state when we see an actual unlink first.
+    mdWatcher.on('unlink', () => {
+      console.log(`[${filePath}] File deleted`);
+      state!.wasDeleted = true;
+    });
 
-      // Detect delete+recreate by checking if the inode changed
-      const currentInode = fs.statSync(filePath).ino;
-      if (currentInode !== state!.inode) {
-        console.log(`[${filePath}] Inode changed (${state!.inode} → ${currentInode}), file was recreated — resetting state`);
-        state!.inode = currentInode;
-        state!.rawMarkdown = newContent;
-        state!.renderedHtml = renderMarkdown(newContent);
-        state!.annotationService.clear();
-        state!.versionHistory.initBaseline(newContent);
-        state!.sessions.clear();
-        this.broadcastToFile(state!, {
-          type: 'file-changed',
-          filePath,
-          rawMarkdown: state!.rawMarkdown,
-          renderedHtml: state!.renderedHtml,
-        });
-        this.broadcastToFile(state!, {
-          type: 'annotations-changed',
-          filePath,
-          annotations: [],
-        });
-        return;
-      }
-
+    const handleFileContent = (newContent: string) => {
       // Record version diff BEFORE updating state
       const version = state!.versionHistory.recordChange(state!.rawMarkdown, newContent);
 
@@ -168,6 +149,37 @@ export class FileManager {
           annotations,
         });
       }
+    };
+
+    mdWatcher.on('change', () => {
+      console.log(`[${filePath}] Markdown changed, reloading...`);
+      const newContent = fs.readFileSync(filePath, 'utf-8');
+      handleFileContent(newContent);
+    });
+
+    // 'add' fires when the file reappears after an unlink (delete+recreate).
+    mdWatcher.on('add', () => {
+      if (!state!.wasDeleted) return;
+      state!.wasDeleted = false;
+
+      console.log(`[${filePath}] File recreated after deletion — resetting state`);
+      const newContent = fs.readFileSync(filePath, 'utf-8');
+      state!.rawMarkdown = newContent;
+      state!.renderedHtml = renderMarkdown(newContent);
+      state!.annotationService.clear();
+      state!.versionHistory.initBaseline(newContent);
+      state!.sessions.clear();
+      this.broadcastToFile(state!, {
+        type: 'file-changed',
+        filePath,
+        rawMarkdown: state!.rawMarkdown,
+        renderedHtml: state!.renderedHtml,
+      });
+      this.broadcastToFile(state!, {
+        type: 'annotations-changed',
+        filePath,
+        annotations: [],
+      });
     });
 
     state.mdWatcher = mdWatcher;
