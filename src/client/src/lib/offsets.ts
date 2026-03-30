@@ -132,6 +132,24 @@ function fuzzyFindInSource(
 }
 
 /**
+ * Map a text offset within a rendered block to an approximate source offset.
+ * Uses linear interpolation: the ratio of the text position within the
+ * rendered text is applied to the source range. This handles blocks with
+ * markdown syntax (links, bold, etc.) where rendered text is shorter than
+ * the raw source.
+ */
+function textOffsetToSourceOffset(
+  textOffset: number,
+  blockTextLen: number,
+  blockSourceStart: number,
+  blockSourceEnd: number
+): number {
+  if (blockTextLen <= 0) return blockSourceStart;
+  const ratio = Math.min(1, textOffset / blockTextLen);
+  return Math.round(blockSourceStart + ratio * (blockSourceEnd - blockSourceStart));
+}
+
+/**
  * Convert a browser Selection to raw markdown source offsets.
  */
 export function selectionToSourceOffset(
@@ -150,47 +168,82 @@ export function selectionToSourceOffset(
 
   if (!startEl) return null;
 
-  const blockStart = parseInt(startEl.getAttribute('data-source-start') || '0', 10);
-  const blockEnd = parseInt(
-    (endEl || startEl).getAttribute('data-source-end') || String(rawMarkdown.length),
-    10
-  );
+  const startBlockStart = parseInt(startEl.getAttribute('data-source-start') || '0', 10);
+  const startBlockEnd = parseInt(startEl.getAttribute('data-source-end') || String(rawMarkdown.length), 10);
+  const effectiveEndEl = endEl || startEl;
+  const endBlockStart = parseInt(effectiveEndEl.getAttribute('data-source-start') || '0', 10);
+  const endBlockEnd = parseInt(effectiveEndEl.getAttribute('data-source-end') || String(rawMarkdown.length), 10);
 
-  // Compute text offset within the block
-  const textOffsetInBlock = getTextOffsetInElement(
+  // Compute text offset within the start block
+  const startTextOffset = getTextOffsetInElement(
     startEl,
     range.startContainer,
     range.startOffset
   );
 
-  // Approximate source position
-  const approximateStart = blockStart + textOffsetInBlock;
+  // Single-block selection: use existing fuzzy match
+  if (startEl === effectiveEndEl) {
+    const approximateStart = startBlockStart + startTextOffset;
+    const match = fuzzyFindInSource(rawMarkdown, selectedText, approximateStart);
 
-  // Fuzzy find in raw source
-  const match = fuzzyFindInSource(rawMarkdown, selectedText, approximateStart);
-
-  if (!match) {
-    // Fallback: use block-level offsets
-    return {
-      startOffset: blockStart,
-      endOffset: blockEnd,
-      selectedText,
-      contextBefore: rawMarkdown.slice(
-        Math.max(0, blockStart - CONTEXT_LENGTH),
-        blockStart
-      ),
-      contextAfter: rawMarkdown.slice(blockEnd, blockEnd + CONTEXT_LENGTH),
-    };
+    if (match) {
+      return {
+        startOffset: match.start,
+        endOffset: match.end,
+        selectedText: rawMarkdown.slice(match.start, match.end),
+        contextBefore: rawMarkdown.slice(Math.max(0, match.start - CONTEXT_LENGTH), match.start),
+        contextAfter: rawMarkdown.slice(match.end, match.end + CONTEXT_LENGTH),
+      };
+    }
   }
 
+  // Cross-block selection (or single-block fuzzy match failed): compute
+  // start and end independently using the text-to-source ratio within
+  // each block. This handles markdown syntax (links, bold) where rendered
+  // text is shorter than raw source.
+  const startSourceOffset = textOffsetToSourceOffset(
+    startTextOffset,
+    startEl.textContent?.length || 1,
+    startBlockStart,
+    startBlockEnd
+  );
+
+  const endTextOffset = getTextOffsetInElement(
+    effectiveEndEl,
+    range.endContainer,
+    range.endOffset
+  );
+  const endSourceOffset = textOffsetToSourceOffset(
+    endTextOffset,
+    effectiveEndEl.textContent?.length || 1,
+    endBlockStart,
+    endBlockEnd
+  );
+
+  // Refine: snap to word/line boundaries in the raw source.
+  // For start: search backward for the nearest line/word start.
+  // For end: search forward for the nearest line/word end.
+  let refinedStart = startSourceOffset;
+  let refinedEnd = endSourceOffset;
+
+  // Snap start to beginning of the word/token at approximate position
+  while (refinedStart > startBlockStart && rawMarkdown[refinedStart - 1] !== '\n' && rawMarkdown[refinedStart - 1] !== ' ') {
+    refinedStart--;
+  }
+  // Snap end to end of word/token
+  while (refinedEnd < endBlockEnd && rawMarkdown[refinedEnd] !== '\n' && rawMarkdown[refinedEnd] !== ' ') {
+    refinedEnd++;
+  }
+
+  // Clamp to block boundaries
+  refinedStart = Math.max(startBlockStart, refinedStart);
+  refinedEnd = Math.min(endBlockEnd, refinedEnd);
+
   return {
-    startOffset: match.start,
-    endOffset: match.end,
-    selectedText: rawMarkdown.slice(match.start, match.end),
-    contextBefore: rawMarkdown.slice(
-      Math.max(0, match.start - CONTEXT_LENGTH),
-      match.start
-    ),
-    contextAfter: rawMarkdown.slice(match.end, match.end + CONTEXT_LENGTH),
+    startOffset: refinedStart,
+    endOffset: refinedEnd,
+    selectedText: rawMarkdown.slice(refinedStart, refinedEnd),
+    contextBefore: rawMarkdown.slice(Math.max(0, refinedStart - CONTEXT_LENGTH), refinedStart),
+    contextAfter: rawMarkdown.slice(refinedEnd, refinedEnd + CONTEXT_LENGTH),
   };
 }
