@@ -132,21 +132,72 @@ function fuzzyFindInSource(
 }
 
 /**
- * Map a text offset within a rendered block to an approximate source offset.
- * Uses linear interpolation: the ratio of the text position within the
- * rendered text is applied to the source range. This handles blocks with
- * markdown syntax (links, bold, etc.) where rendered text is shorter than
- * the raw source.
+ * Build a position map from rendered-text indices to raw-source indices by
+ * stripping markdown syntax (links, bold/italic markers, list prefixes,
+ * backticks). Returns an array where map[renderedPos] = rawPos.
+ */
+function buildSourceMap(rawBlock: string): number[] {
+  const map: number[] = [];
+  let i = 0;
+
+  // Skip leading list marker: "- ", "* ", "1. ", etc.
+  const listMatch = rawBlock.match(/^(\s*[-*+]\s|\s*\d+\.\s)/);
+  if (listMatch) i = listMatch[0].length;
+
+  while (i < rawBlock.length) {
+    // Markdown link: [text](url) → keep text positions, skip brackets and URL
+    if (rawBlock[i] === '[') {
+      const closeBracket = rawBlock.indexOf(']', i + 1);
+      if (closeBracket !== -1 && closeBracket + 1 < rawBlock.length && rawBlock[closeBracket + 1] === '(') {
+        const closeParen = rawBlock.indexOf(')', closeBracket + 2);
+        if (closeParen !== -1) {
+          for (let j = i + 1; j < closeBracket; j++) {
+            map.push(j);
+          }
+          i = closeParen + 1;
+          continue;
+        }
+      }
+    }
+
+    // Bold/italic markers: *, **, ***, _, __, ___
+    if (rawBlock[i] === '*' || rawBlock[i] === '_') {
+      let count = 0;
+      while (i + count < rawBlock.length && rawBlock[i + count] === rawBlock[i]) count++;
+      if (count <= 3) { i += count; continue; }
+    }
+
+    // Inline code backticks
+    if (rawBlock[i] === '`' && (i + 1 >= rawBlock.length || rawBlock[i + 1] !== '`')) {
+      i++;
+      continue;
+    }
+
+    map.push(i);
+    i++;
+  }
+
+  return map;
+}
+
+/**
+ * Map a text offset within a rendered block to a source offset using an
+ * explicit syntax-stripping map. Falls back to linear interpolation if the
+ * map doesn't cover the offset.
  */
 function textOffsetToSourceOffset(
   textOffset: number,
-  blockTextLen: number,
+  rawMarkdown: string,
   blockSourceStart: number,
   blockSourceEnd: number
 ): number {
-  if (blockTextLen <= 0) return blockSourceStart;
-  const ratio = Math.min(1, textOffset / blockTextLen);
-  return Math.round(blockSourceStart + ratio * (blockSourceEnd - blockSourceStart));
+  const rawBlock = rawMarkdown.slice(blockSourceStart, blockSourceEnd);
+  const posMap = buildSourceMap(rawBlock);
+  if (textOffset < posMap.length) {
+    return blockSourceStart + posMap[textOffset];
+  }
+  // Past the end of the map → return block end
+  return blockSourceEnd;
 }
 
 /**
@@ -203,7 +254,7 @@ export function selectionToSourceOffset(
   // text is shorter than raw source.
   const startSourceOffset = textOffsetToSourceOffset(
     startTextOffset,
-    startEl.textContent?.length || 1,
+    rawMarkdown,
     startBlockStart,
     startBlockEnd
   );
@@ -215,34 +266,22 @@ export function selectionToSourceOffset(
   );
   const endSourceOffset = textOffsetToSourceOffset(
     endTextOffset,
-    effectiveEndEl.textContent?.length || 1,
+    rawMarkdown,
     endBlockStart,
     endBlockEnd
   );
 
-  // Refine: snap to word/line boundaries in the raw source.
-  // For start: search backward for the nearest line/word start.
-  // For end: search forward for the nearest line/word end.
-  let refinedStart = startSourceOffset;
-  let refinedEnd = endSourceOffset;
-
-  // Snap start to beginning of the word/token at approximate position
-  while (refinedStart > startBlockStart && rawMarkdown[refinedStart - 1] !== '\n' && rawMarkdown[refinedStart - 1] !== ' ') {
-    refinedStart--;
-  }
-  // Snap end to end of word/token
-  while (refinedEnd < endBlockEnd && rawMarkdown[refinedEnd] !== '\n' && rawMarkdown[refinedEnd] !== ' ') {
-    refinedEnd++;
-  }
-
-  // Clamp to block boundaries
-  refinedStart = Math.max(startBlockStart, refinedStart);
-  refinedEnd = Math.min(endBlockEnd, refinedEnd);
+  // Use the mapped positions directly (already precise from the source map)
+  const refinedStart = startSourceOffset;
+  const refinedEnd = endSourceOffset;
 
   return {
     startOffset: refinedStart,
     endOffset: refinedEnd,
-    selectedText: rawMarkdown.slice(refinedStart, refinedEnd),
+    // Use the browser's rendered selection text (without markdown syntax)
+    // for display. The startOffset/endOffset + context are used for
+    // re-anchoring which works on raw source positions.
+    selectedText,
     contextBefore: rawMarkdown.slice(Math.max(0, refinedStart - CONTEXT_LENGTH), refinedStart),
     contextAfter: rawMarkdown.slice(refinedEnd, refinedEnd + CONTEXT_LENGTH),
   };
