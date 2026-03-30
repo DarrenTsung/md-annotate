@@ -140,9 +140,10 @@ function buildSourceMap(rawBlock: string): number[] {
   const map: number[] = [];
   let i = 0;
 
-  // Skip leading list marker: "- ", "* ", "1. ", etc.
-  const listMatch = rawBlock.match(/^(\s*[-*+]\s|\s*\d+\.\s)/);
-  if (listMatch) i = listMatch[0].length;
+  // Skip leading block-level markers that aren't in the rendered text:
+  // list markers (- , * , 1. ), heading markers (## ), blockquote (> )
+  const prefixMatch = rawBlock.match(/^(\s*[-*+]\s|\s*\d+\.\s|#{1,6}\s|>\s*)/);
+  if (prefixMatch) i = prefixMatch[0].length;
 
   while (i < rawBlock.length) {
     // Markdown link: [text](url) → keep text positions, skip brackets and URL
@@ -169,6 +170,12 @@ function buildSourceMap(rawBlock: string): number[] {
 
     // Inline code backticks
     if (rawBlock[i] === '`' && (i + 1 >= rawBlock.length || rawBlock[i + 1] !== '`')) {
+      i++;
+      continue;
+    }
+
+    // Skip trailing newlines (not in rendered text)
+    if (rawBlock[i] === '\n' && i === rawBlock.length - 1) {
       i++;
       continue;
     }
