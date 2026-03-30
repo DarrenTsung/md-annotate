@@ -133,51 +133,109 @@ function fuzzyFindInSource(
 
 /**
  * Build a position map from rendered-text indices to raw-source indices by
- * stripping markdown syntax (links, bold/italic markers, list prefixes,
- * backticks). Returns an array where map[renderedPos] = rawPos.
+ * stripping all markdown syntax that doesn't appear in rendered output.
+ * Returns an array where map[renderedPos] = rawPos.
  */
 function buildSourceMap(rawBlock: string): number[] {
   const map: number[] = [];
   let i = 0;
+  const len = rawBlock.length;
 
-  // Skip leading block-level markers that aren't in the rendered text:
-  // list markers (- , * , 1. ), heading markers (## ), blockquote (> )
-  const prefixMatch = rawBlock.match(/^(\s*[-*+]\s|\s*\d+\.\s|#{1,6}\s|>\s*)/);
+  // Skip leading block-level prefix (not in rendered text)
+  // Order matters: check task lists before plain list markers
+  const prefixRe = /^(?:>\s*)?(?:\s*[-*+]\s(?:\[[ xX]\]\s)?|\s*\d+\.\s(?:\[[ xX]\]\s)?|#{1,6}\s)/;
+  const prefixMatch = rawBlock.match(prefixRe);
   if (prefixMatch) i = prefixMatch[0].length;
 
-  while (i < rawBlock.length) {
-    // Markdown link: [text](url) → keep text positions, skip brackets and URL
-    if (rawBlock[i] === '[') {
-      const closeBracket = rawBlock.indexOf(']', i + 1);
-      if (closeBracket !== -1 && closeBracket + 1 < rawBlock.length && rawBlock[closeBracket + 1] === '(') {
+  while (i < len) {
+    const ch = rawBlock[i];
+
+    // Trailing newline (not in rendered text)
+    if (ch === '\n' && i === len - 1) { i++; continue; }
+
+    // Escape backslash: skip the backslash, keep the escaped char
+    if (ch === '\\' && i + 1 < len && /[\\`*_{}[\]()#+\-.!~>|]/.test(rawBlock[i + 1])) {
+      i++; // skip backslash
+      map.push(i); // keep escaped char
+      i++;
+      continue;
+    }
+
+    // Image: ![alt](url) → keep alt text, skip ! and brackets/URL
+    if (ch === '!' && i + 1 < len && rawBlock[i + 1] === '[') {
+      const closeBracket = rawBlock.indexOf(']', i + 2);
+      if (closeBracket !== -1 && closeBracket + 1 < len && rawBlock[closeBracket + 1] === '(') {
         const closeParen = rawBlock.indexOf(')', closeBracket + 2);
         if (closeParen !== -1) {
-          for (let j = i + 1; j < closeBracket; j++) {
-            map.push(j);
-          }
+          for (let j = i + 2; j < closeBracket; j++) map.push(j);
           i = closeParen + 1;
           continue;
         }
       }
     }
 
-    // Bold/italic markers: *, **, ***, _, __, ___
-    if (rawBlock[i] === '*' || rawBlock[i] === '_') {
+    // Link: [text](url) → keep text, skip brackets and URL
+    if (ch === '[') {
+      const closeBracket = rawBlock.indexOf(']', i + 1);
+      if (closeBracket !== -1 && closeBracket + 1 < len && rawBlock[closeBracket + 1] === '(') {
+        const closeParen = rawBlock.indexOf(')', closeBracket + 2);
+        if (closeParen !== -1) {
+          for (let j = i + 1; j < closeBracket; j++) map.push(j);
+          i = closeParen + 1;
+          continue;
+        }
+      }
+      // Reference link: [text][ref] → keep text
+      if (closeBracket !== -1 && closeBracket + 1 < len && rawBlock[closeBracket + 1] === '[') {
+        const closeRef = rawBlock.indexOf(']', closeBracket + 2);
+        if (closeRef !== -1) {
+          for (let j = i + 1; j < closeBracket; j++) map.push(j);
+          i = closeRef + 1;
+          continue;
+        }
+      }
+    }
+
+    // Strikethrough: ~~text~~ → skip the ~~ markers
+    if (ch === '~' && i + 1 < len && rawBlock[i + 1] === '~') {
+      i += 2;
+      continue;
+    }
+
+    // Bold/italic: *, **, ***, _, __, ___ → skip markers
+    if (ch === '*' || ch === '_') {
       let count = 0;
-      while (i + count < rawBlock.length && rawBlock[i + count] === rawBlock[i]) count++;
+      while (i + count < len && rawBlock[i + count] === ch) count++;
       if (count <= 3) { i += count; continue; }
     }
 
-    // Inline code backticks
-    if (rawBlock[i] === '`' && (i + 1 >= rawBlock.length || rawBlock[i + 1] !== '`')) {
-      i++;
+    // Inline code: `text` or ``text`` → skip backtick delimiters
+    if (ch === '`') {
+      let ticks = 0;
+      while (i + ticks < len && rawBlock[i + ticks] === '`') ticks++;
+      // Skip opening backticks
+      i += ticks;
+      // Map content until matching closing backticks
+      while (i < len) {
+        let closeTicks = 0;
+        while (i + closeTicks < len && rawBlock[i + closeTicks] === '`') closeTicks++;
+        if (closeTicks === ticks) { i += ticks; break; }
+        if (closeTicks > 0) {
+          // Non-matching backticks are content
+          for (let j = 0; j < closeTicks; j++) { map.push(i + j); }
+          i += closeTicks;
+        } else {
+          map.push(i);
+          i++;
+        }
+      }
       continue;
     }
 
-    // Skip trailing newlines (not in rendered text)
-    if (rawBlock[i] === '\n' && i === rawBlock.length - 1) {
-      i++;
-      continue;
+    // HTML tags: <tag> or </tag> or <tag attr="val"> → skip
+    if (ch === '<' && i + 1 < len && (rawBlock[i + 1] === '/' || /[a-zA-Z]/.test(rawBlock[i + 1]))) {
+      const closeAngle = rawBlock.indexOf('>', i + 1);
+      if (closeAngle !== -1) { i = closeAngle + 1; continue; }
     }
 
     map.push(i);
