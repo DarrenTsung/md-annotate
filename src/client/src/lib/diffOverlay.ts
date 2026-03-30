@@ -24,9 +24,13 @@ function unwrapLists(container: HTMLElement): void {
     const target = firstP || li;
     target.insertBefore(document.createTextNode(prefix), target.firstChild);
 
+    // Wrap each item in a <div> so multiple items render on separate lines
+    // (tight lists have no <p> wrappers and would collapse into one line)
+    const wrapper = document.createElement('div');
     while (li.firstChild) {
-      list.parentNode?.insertBefore(li.firstChild, list);
+      wrapper.appendChild(li.firstChild);
     }
+    list.parentNode?.insertBefore(wrapper, list);
   }
   list.remove();
 }
@@ -112,7 +116,7 @@ export function applyDiffOverlay(
         const tmp = document.createElement('div');
         tmp.innerHTML = hunk.renderedValue;
         unwrapLists(tmp);
-        del.innerHTML = tmp.innerHTML;
+        del.innerHTML = tmp.innerHTML.trim();
       } else {
         del.textContent = hunk.value;
       }
