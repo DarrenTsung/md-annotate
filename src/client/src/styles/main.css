@@ -486,6 +486,19 @@ del.diff-removed div > p { margin: 0; }
   text-decoration: none;
 }
 
+/* Table row fallback highlight (structural changes spanning cells) */
+tr.diff-modified td {
+  background: rgba(46, 160, 67, 0.08);
+}
+
+/* Removed table rows */
+tr.diff-removed-row td {
+  background: rgba(248, 81, 73, 0.1);
+  color: #9a3030;
+  text-decoration: line-through;
+  text-decoration-color: rgba(154, 48, 48, 0.4);
+}
+
 /* Version dots in toolbar */
 .toolbar-versions {
   display: flex;

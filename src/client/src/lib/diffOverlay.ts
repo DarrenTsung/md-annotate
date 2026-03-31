@@ -47,6 +47,7 @@ export function applyDiffOverlay(
   const addedElements: HTMLElement[] = [];
   const insertedElements: HTMLElement[] = [];
   const hiddenElements: { el: HTMLElement; orig: string }[] = [];
+  const modifiedCells: { el: HTMLElement; orig: string }[] = [];
 
   const blockElements = Array.from(
     container.querySelectorAll('[data-source-start]')
@@ -83,9 +84,40 @@ export function applyDiffOverlay(
 
       const firstBlock = blocks[0];
 
+      // Table elements: match rendered <tr> elements from renderedValue
+      // to DOM <tr> blocks and inject per-cell <del>/<ins> diffs.
+      // Parse inside a <table> context so browsers don't strip <tr>/<td> tags.
+      const tableTag = /^(TABLE|THEAD|TBODY|TR|TD|TH)$/;
+      if (blocks.some((b) => tableTag.test(b.tagName))) {
+        const tableCtx = document.createElement('table');
+        tableCtx.innerHTML = '<tbody>' + hunk.renderedValue + '</tbody>';
+        const renderedRows = Array.from(tableCtx.querySelectorAll('tr'));
+        const trBlocks = blocks.filter((b) => b.tagName === 'TR');
+
+        for (let ri = 0; ri < trBlocks.length && ri < renderedRows.length; ri++) {
+          const tr = trBlocks[ri];
+          const renderedTds = renderedRows[ri].querySelectorAll('td');
+          const tds = tr.querySelectorAll('td');
+          for (let ci = 0; ci < tds.length && ci < renderedTds.length; ci++) {
+            const cellHtml = renderedTds[ci].innerHTML;
+            if (cellHtml.includes('<del>') || cellHtml.includes('<ins>')) {
+              const td = tds[ci] as HTMLElement;
+              modifiedCells.push({ el: td, orig: td.innerHTML });
+              td.innerHTML = cellHtml;
+              td.classList.add('diff-modified');
+              addedElements.push(td);
+            }
+          }
+        }
+        continue;
+      }
+
       if (blocks.length === 1) {
         // Single block: match the tag and extract inner content for clean merge.
-        const inner = tmp.querySelector('p, li');
+        // Find the first element matching the block's tag to avoid nesting
+        // (e.g., <h3> inside <h3>).
+        const tag = firstBlock.tagName.toLowerCase();
+        const inner = tmp.querySelector(tag) || tmp.querySelector('p, li');
         const html = inner ? inner.innerHTML : tmp.innerHTML;
 
         const modified = document.createElement(firstBlock.tagName.toLowerCase());
@@ -124,38 +156,55 @@ export function applyDiffOverlay(
         }
       }
 
-      const del = document.createElement('del');
-      del.className = 'diff-removed';
-      if (hunk.renderedValue) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = hunk.renderedValue;
-        unwrapLists(tmp);
-        del.innerHTML = tmp.innerHTML.trim();
+      // For table rows, insert <tr> elements directly with diff-removed
+      // styling (a <del> wrapper would break table structure).
+      if (insertBefore?.closest('table') && hunk.renderedValue?.includes('<tr')) {
+        const tableCtx = document.createElement('table');
+        tableCtx.innerHTML = '<tbody>' + hunk.renderedValue + '</tbody>';
+        const rows = tableCtx.querySelectorAll('tr');
+        for (const row of rows) {
+          (row as HTMLElement).classList.add('diff-removed-row');
+          insertBefore!.parentNode?.insertBefore(row, insertBefore);
+          insertedElements.push(row as HTMLElement);
+        }
       } else {
-        del.textContent = hunk.value;
-      }
+        const del = document.createElement('del');
+        del.className = 'diff-removed';
+        if (hunk.renderedValue) {
+          const tmp = document.createElement('div');
+          tmp.innerHTML = hunk.renderedValue;
+          unwrapLists(tmp);
+          del.innerHTML = tmp.innerHTML.trim();
+        } else {
+          del.textContent = hunk.value;
+        }
 
-      if (insertBefore) {
-        insertBefore.parentNode?.insertBefore(del, insertBefore);
-      } else if (blockElements.length > 0) {
-        const lastBlock = blockElements[blockElements.length - 1];
-        lastBlock.parentNode?.insertBefore(del, lastBlock.nextSibling);
-      } else {
-        container.appendChild(del);
+        if (insertBefore) {
+          insertBefore.parentNode?.insertBefore(del, insertBefore);
+        } else if (blockElements.length > 0) {
+          const lastBlock = blockElements[blockElements.length - 1];
+          lastBlock.parentNode?.insertBefore(del, lastBlock.nextSibling);
+        } else {
+          container.appendChild(del);
+        }
+        insertedElements.push(del);
       }
-      insertedElements.push(del);
     }
   }
 
   return () => {
     for (const el of addedElements) {
       el.classList.remove('diff-added');
+      el.classList.remove('diff-modified');
     }
     for (const el of insertedElements) {
       el.parentNode?.removeChild(el);
     }
     for (const { el, orig } of hiddenElements) {
       el.style.display = orig;
+    }
+    for (const { el, orig } of modifiedCells) {
+      el.innerHTML = orig;
     }
   };
 }

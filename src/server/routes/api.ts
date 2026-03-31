@@ -31,7 +31,14 @@ export function createApiRouter(fileManager: FileManager): Router {
       if (session) {
         fileManager.addSession(filePath, session);
       }
-      res.json(fileManager.getFileContent(filePath));
+      const content = fileManager.getFileContent(filePath);
+      res.json({
+        ...content,
+        versions: content.versions.map((v) => ({
+          ...v,
+          hunks: enrichHunks(v.hunks),
+        })),
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(404).json({ error: message });
@@ -47,7 +54,11 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
     try {
       const content = fileManager.getFileContent(filePath);
-      res.json({ versions: content.versions, lastEdited: content.lastEdited });
+      const enrichedVersions = content.versions.map((v) => ({
+        ...v,
+        hunks: enrichHunks(v.hunks),
+      }));
+      res.json({ versions: enrichedVersions, lastEdited: content.lastEdited });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(404).json({ error: message });
