@@ -5,6 +5,7 @@ import { CommentForm } from './CommentForm.js';
 interface CommentThreadProps {
   annotation: Annotation;
   isActive: boolean;
+  forceExpanded?: boolean;
   onActivate: () => void;
   onReply: (text: string) => void;
   onResolve: () => void;
@@ -15,6 +16,7 @@ interface CommentThreadProps {
 export function CommentThread({
   annotation,
   isActive,
+  forceExpanded,
   onActivate,
   onReply,
   onResolve,
@@ -39,7 +41,7 @@ export function CommentThread({
   }
 
   const isResolved = annotation.status === 'resolved';
-  const collapsed = isResolved && !isActive;
+  const collapsed = isResolved && !isActive && !forceExpanded;
 
   if (collapsed) {
     const quote = annotation.selectedText.length > 40

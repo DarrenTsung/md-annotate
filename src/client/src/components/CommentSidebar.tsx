@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { Annotation } from '@shared/types.js';
 import { CommentThread } from './CommentThread.js';
+
+const RECENTLY_RESOLVED_MS = 5000;
 
 interface CommentSidebarProps {
   annotations: Annotation[];
@@ -21,6 +23,34 @@ export function CommentSidebar({
   onReopen,
   onDelete,
 }: CommentSidebarProps) {
+  // Track recently resolved annotations so they stay expanded briefly
+  const [recentlyResolved, setRecentlyResolved] = useState<Set<string>>(new Set());
+  const prevStatusRef = useRef<Map<string, string>>(new Map());
+  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    for (const a of annotations) {
+      const wasOpen = prev.get(a.id) === 'open';
+      if (wasOpen && a.status === 'resolved') {
+        setRecentlyResolved((s) => new Set(s).add(a.id));
+        const timer = setTimeout(() => {
+          setRecentlyResolved((s) => {
+            const next = new Set(s);
+            next.delete(a.id);
+            return next;
+          });
+          timersRef.current.delete(a.id);
+        }, RECENTLY_RESOLVED_MS);
+        timersRef.current.set(a.id, timer);
+      }
+      prev.set(a.id, a.status);
+    }
+    return () => {
+      for (const t of timersRef.current.values()) clearTimeout(t);
+    };
+  }, [annotations]);
+
   // Sort by position in document
   const sorted = [...annotations].sort(
     (a, b) => a.startOffset - b.startOffset
@@ -63,6 +93,7 @@ export function CommentSidebar({
           <ResolvedSection
             resolvedAnnotations={resolvedAnnotations}
             activeAnnotationId={activeAnnotationId}
+            recentlyResolved={recentlyResolved}
             onSetActive={onSetActive}
             onReply={onReply}
             onResolve={onResolve}
@@ -87,6 +118,7 @@ export function CommentSidebar({
 function ResolvedSection({
   resolvedAnnotations,
   activeAnnotationId,
+  recentlyResolved,
   onSetActive,
   onReply,
   onResolve,
@@ -95,6 +127,7 @@ function ResolvedSection({
 }: {
   resolvedAnnotations: Annotation[];
   activeAnnotationId: string | null;
+  recentlyResolved: Set<string>;
   onSetActive: (id: string | null) => void;
   onReply: (annotationId: string, text: string) => void;
   onResolve: (annotationId: string) => void;
@@ -146,6 +179,7 @@ function ResolvedSection({
           key={annotation.id}
           annotation={annotation}
           isActive={activeAnnotationId === annotation.id}
+          forceExpanded={recentlyResolved.has(annotation.id)}
           onActivate={() => onSetActive(activeAnnotationId === annotation.id ? null : annotation.id)}
           onReply={(text) => onReply(annotation.id, text)}
           onResolve={() => onResolve(annotation.id)}
