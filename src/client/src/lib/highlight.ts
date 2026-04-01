@@ -85,21 +85,25 @@ function applyHighlightRanges(
   const marks: HTMLElement[] = [];
 
   for (const range of ranges) {
-    const blockElements = container.querySelectorAll('[data-source-start]');
+    const blockElements = Array.from(
+      container.querySelectorAll('[data-source-start]')
+    ) as HTMLElement[];
 
-    for (const block of blockElements) {
-      const el = block as HTMLElement;
+    // Find blocks that overlap this range
+    const overlapping = blockElements.filter((el) => {
       const blockStart = parseInt(el.getAttribute('data-source-start') || '0', 10);
-      const blockEnd = parseInt(
-        el.getAttribute('data-source-end') || '0',
-        10
-      );
+      const blockEnd = parseInt(el.getAttribute('data-source-end') || '0', 10);
+      return range.startOffset < blockEnd && range.endOffset > blockStart;
+    });
 
-      // Check if this range overlaps with this block (using raw offsets)
-      if (range.startOffset >= blockEnd || range.endOffset <= blockStart) {
-        continue;
-      }
+    // Keep only the most specific blocks (filter out parents whose
+    // children also overlap — e.g. a <ul> when individual <li>s match)
+    const leafBlocks = overlapping.filter(
+      (block) => !overlapping.some((o) => o !== block && block.contains(o))
+    );
 
+    for (const el of leafBlocks) {
+      const blockStart = parseInt(el.getAttribute('data-source-start') || '0', 10);
       highlightTextInElement(el, range, blockStart, marks, rawMarkdown);
     }
   }

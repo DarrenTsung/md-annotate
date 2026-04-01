@@ -329,12 +329,18 @@ export function selectionToSourceOffset(
     range.endContainer,
     range.endOffset
   );
-  const endSourceOffset = textOffsetToSourceOffset(
-    endTextOffset,
-    rawMarkdown,
-    endBlockStart,
-    endBlockEnd
-  );
+  // When the selection ends at offset 0 of a different block, the user
+  // hasn't selected any content from that block (common when dragging to
+  // select a full line — the browser anchors at the start of the next
+  // element). Use the block boundary directly to avoid bleeding into it.
+  const endSourceOffset = (endTextOffset === 0 && startEl !== effectiveEndEl)
+    ? endBlockStart
+    : textOffsetToSourceOffset(
+        endTextOffset,
+        rawMarkdown,
+        endBlockStart,
+        endBlockEnd
+      );
 
   // Use the mapped positions directly (already precise from the source map)
   const refinedStart = startSourceOffset;
