@@ -106,14 +106,6 @@ export class FileManager {
       awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
     });
 
-    // Track unlink events to distinguish delete+recreate from atomic writes.
-    // Atomic writes (write temp + rename) change the inode but don't fire
-    // unlink, so we only reset state when we see an actual unlink first.
-    mdWatcher.on('unlink', () => {
-      console.log(`[${filePath}] File deleted`);
-      state!.wasDeleted = true;
-    });
-
     const handleFileContent = (newContent: string) => {
       // Record version diff BEFORE updating state
       const version = state!.versionHistory.recordChange(state!.rawMarkdown, newContent);
@@ -146,35 +138,43 @@ export class FileManager {
       }
     };
 
+    // Distinguish atomic writes from real deletions. On macOS, FSEvents
+    // fires unlink+add for atomic writes (write temp + rename) just like
+    // real delete+recreate. We use a timer: if 'add' fires within 500ms
+    // of 'unlink', it's an atomic write (just reload). If not, the file
+    // was genuinely deleted.
+    let unlinkTimer: ReturnType<typeof setTimeout> | null = null;
+
+    mdWatcher.on('unlink', () => {
+      state!.wasDeleted = true;
+      // Wait to see if 'add' fires quickly (atomic write) or not (real delete)
+      unlinkTimer = setTimeout(() => {
+        if (state!.wasDeleted) {
+          console.log(`[${filePath}] File deleted (no re-add within 500ms)`);
+        }
+      }, 500);
+    });
+
+    mdWatcher.on('add', () => {
+      if (!state!.wasDeleted) return;
+      state!.wasDeleted = false;
+      if (unlinkTimer) { clearTimeout(unlinkTimer); unlinkTimer = null; }
+
+      // Atomic write: unlink+add in quick succession. Treat as a normal
+      // content change, preserving annotations and sessions.
+      console.log(`[${filePath}] Atomic write detected (unlink+add), reloading...`);
+      try {
+        const newContent = fs.readFileSync(filePath, 'utf-8');
+        handleFileContent(newContent);
+      } catch {
+        // File might not be fully written yet
+      }
+    });
+
     mdWatcher.on('change', () => {
       console.log(`[${filePath}] Markdown changed, reloading...`);
       const newContent = fs.readFileSync(filePath, 'utf-8');
       handleFileContent(newContent);
-    });
-
-    // 'add' fires when the file reappears after an unlink (delete+recreate).
-    mdWatcher.on('add', () => {
-      if (!state!.wasDeleted) return;
-      state!.wasDeleted = false;
-
-      console.log(`[${filePath}] File recreated after deletion — resetting state`);
-      const newContent = fs.readFileSync(filePath, 'utf-8');
-      state!.rawMarkdown = newContent;
-      state!.renderedHtml = renderMarkdown(newContent);
-      state!.annotationService.clear();
-      state!.versionHistory.initBaseline(newContent);
-      state!.sessions.clear();
-      this.broadcastToFile(state!, {
-        type: 'file-changed',
-        filePath,
-        rawMarkdown: state!.rawMarkdown,
-        renderedHtml: state!.renderedHtml,
-      });
-      this.broadcastToFile(state!, {
-        type: 'annotations-changed',
-        filePath,
-        annotations: [],
-      });
     });
 
     state.mdWatcher = mdWatcher;
@@ -237,6 +237,14 @@ export class FileManager {
           previousFile = otherPath;
           otherState.sessions.delete(session);
         }
+      }
+
+      // Only one session owns a file at a time. Evict previous sessions
+      // so only the latest browser tab drives iTerm notifications.
+      if (state.sessions.size > 0 && !state.sessions.has(session)) {
+        const evicted = [...state.sessions];
+        state.sessions.clear();
+        console.log(`[${filePath}] Session ${session.slice(0, 16)}... replaced ${evicted.map(s => s.slice(0, 16) + '...').join(', ')}`);
       }
       state.sessions.add(session);
 

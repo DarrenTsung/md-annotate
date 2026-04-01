@@ -13,6 +13,8 @@ const CONTEXT_LENGTH = 30;
 export class AnnotationService {
   private sidecarPath: string;
   private filePath: string;
+  /** In-memory cache so annotations survive brief sidecar deletions. */
+  private cache: AnnotationFile | null = null;
 
   constructor(filePath: string) {
     this.filePath = filePath;
@@ -25,6 +27,9 @@ export class AnnotationService {
 
   read(): AnnotationFile {
     if (!fs.existsSync(this.sidecarPath)) {
+      // Sidecar missing: return cached data if available (survives brief
+      // disk deletions from atomic writes / git operations).
+      if (this.cache) return this.cache;
       return {
         version: 1,
         filePath: this.filePath,
@@ -33,8 +38,11 @@ export class AnnotationService {
     }
     try {
       const raw = fs.readFileSync(this.sidecarPath, 'utf-8');
-      return JSON.parse(raw) as AnnotationFile;
+      const data = JSON.parse(raw) as AnnotationFile;
+      this.cache = data;
+      return data;
     } catch {
+      if (this.cache) return this.cache;
       return {
         version: 1,
         filePath: this.filePath,
@@ -44,11 +52,13 @@ export class AnnotationService {
   }
 
   private write(data: AnnotationFile): void {
+    this.cache = data;
     fs.writeFileSync(this.sidecarPath, JSON.stringify(data, null, 2) + '\n');
   }
 
   /** Remove all annotations (used when the file is deleted and recreated). */
   clear(): void {
+    this.cache = null;
     try { fs.unlinkSync(this.sidecarPath); } catch { /* already gone */ }
   }
 
