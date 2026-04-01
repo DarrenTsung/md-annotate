@@ -91,110 +91,125 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
     return () => window.removeEventListener('pageshow', handlePageShow);
   }, [refreshData]);
 
-  // WebSocket connection — subscribe to the specific file
+  // WebSocket connection — subscribe to the specific file, with auto-reconnect
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    let disposed = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectDelay = 1000;
 
-    ws.onopen = () => {
-      // Subscribe to this file's updates
-      ws.send(JSON.stringify({
-        type: 'subscribe',
-        filePath,
-        session: session || undefined,
-      }));
-    };
+    function connect() {
+      if (disposed) return;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data) as WsMessage;
-        switch (msg.type) {
-          case 'file-changed':
-            if (msg.filePath === filePath) {
-              setFileData((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      rawMarkdown: msg.rawMarkdown,
-                      renderedHtml: msg.renderedHtml,
-                    }
-                  : null
-              );
-            }
-            break;
-          case 'annotations-changed':
-            if (msg.filePath === filePath) {
-              setAnnotations(msg.annotations);
-              // If the active annotation was resolved by Claude, deselect it
-              // so its CommentForm doesn't remount with autoFocus and steal
-              // keyboard input from whatever the user was typing in.
-              setActiveAnnotationId((prev) => {
-                if (!prev) return null;
-                const active = msg.annotations.find((a: Annotation) => a.id === prev);
-                if (active && active.status === 'resolved') return null;
-                return prev;
-              });
-            }
-            break;
-          case 'version-created':
-            if (msg.filePath === filePath) {
-              setVersions((prev) => {
-                const idx = prev.findIndex((v) => v.id === msg.version.id);
-                if (idx >= 0) {
-                  // Coalesced: update existing version in place
-                  const updated = [...prev];
-                  updated[idx] = msg.version;
-                  return updated;
-                }
-                return [...prev, msg.version];
-              });
-              setLastEdited(msg.lastEdited);
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-              // Show overlay immediately. Track the base version of the editing
-              // burst and fetch a cumulative diff (base snapshot → current) so
-              // removed content from earlier edits doesn't stack up.
-              if (!autoShowBaseVersionRef.current) {
-                autoShowBaseVersionRef.current = msg.version.id;
+      ws.onopen = () => {
+        reconnectDelay = 1000; // reset backoff on successful connect
+        ws.send(JSON.stringify({
+          type: 'subscribe',
+          filePath,
+          session: session || undefined,
+        }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data) as WsMessage;
+          switch (msg.type) {
+            case 'file-changed':
+              if (msg.filePath === filePath) {
+                setFileData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        rawMarkdown: msg.rawMarkdown,
+                        renderedHtml: msg.renderedHtml,
+                      }
+                    : null
+                );
               }
-              setAutoShowVersionId(msg.version.id);
+              break;
+            case 'annotations-changed':
+              if (msg.filePath === filePath) {
+                setAnnotations(msg.annotations);
+                // If the active annotation was resolved by Claude, deselect it
+                // so its CommentForm doesn't remount with autoFocus and steal
+                // keyboard input from whatever the user was typing in.
+                setActiveAnnotationId((prev) => {
+                  if (!prev) return null;
+                  const active = msg.annotations.find((a: Annotation) => a.id === prev);
+                  if (active && active.status === 'resolved') return null;
+                  return prev;
+                });
+              }
+              break;
+            case 'version-created':
+              if (msg.filePath === filePath) {
+                setVersions((prev) => {
+                  const idx = prev.findIndex((v) => v.id === msg.version.id);
+                  if (idx >= 0) {
+                    // Coalesced: update existing version in place
+                    const updated = [...prev];
+                    updated[idx] = msg.version;
+                    return updated;
+                  }
+                  return [...prev, msg.version];
+                });
+                setLastEdited(msg.lastEdited);
 
-              // Fetch cumulative diff from the burst's base version
-              const baseId = autoShowBaseVersionRef.current;
-              api.getVersionDiff(baseId).then(({ hunks }) => {
-                setShownDiffHunks(hunks);
-              }).catch(() => {
-                // Fallback: just show this version's hunks
-                setShownDiffHunks(msg.version.hunks);
-              });
+                // Show overlay immediately. Track the base version of the editing
+                // burst and fetch a cumulative diff (base snapshot → current) so
+                // removed content from earlier edits doesn't stack up.
+                if (!autoShowBaseVersionRef.current) {
+                  autoShowBaseVersionRef.current = msg.version.id;
+                }
+                setAutoShowVersionId(msg.version.id);
 
-              if (autoShowTimerRef.current) clearTimeout(autoShowTimerRef.current);
-              autoShowTimerRef.current = setTimeout(() => {
-                setAutoShowVersionId(null);
-                setShownDiffHunks(null);
-                autoShowBaseVersionRef.current = null;
-              }, 5000);
-            }
-            break;
-          case 'connected':
-            console.log('WebSocket connected');
-            break;
+                // Fetch cumulative diff from the burst's base version
+                const baseId = autoShowBaseVersionRef.current;
+                api.getVersionDiff(baseId).then(({ hunks }) => {
+                  setShownDiffHunks(hunks);
+                }).catch(() => {
+                  // Fallback: just show this version's hunks
+                  setShownDiffHunks(msg.version.hunks);
+                });
+
+                if (autoShowTimerRef.current) clearTimeout(autoShowTimerRef.current);
+                autoShowTimerRef.current = setTimeout(() => {
+                  setAutoShowVersionId(null);
+                  setShownDiffHunks(null);
+                  autoShowBaseVersionRef.current = null;
+                }, 5000);
+              }
+              break;
+            case 'connected':
+              console.log('WebSocket connected');
+              break;
+          }
+        } catch (err) {
+          console.error('WebSocket message error:', err);
         }
-      } catch (err) {
-        console.error('WebSocket message error:', err);
-      }
-    };
+      };
 
-    ws.onclose = () => {
-      console.log('WebSocket closed, reconnecting in 2s...');
-      setTimeout(() => {
+      ws.onclose = () => {
         wsRef.current = null;
-      }, 2000);
-    };
+        if (disposed) return;
+        console.log(`WebSocket closed, reconnecting in ${reconnectDelay / 1000}s...`);
+        reconnectTimer = setTimeout(() => {
+          reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+          connect();
+        }, reconnectDelay);
+      };
+    }
+
+    connect();
 
     return () => {
-      ws.close();
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      wsRef.current?.close();
     };
   }, [filePath, session]);
 
