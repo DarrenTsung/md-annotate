@@ -44,6 +44,7 @@ function getMd(): MarkdownIt {
   if (!mdInstance) {
     mdInstance = new MarkdownIt({
       html: true,
+      breaks: true,
       linkify: true,
       typographer: true,
       highlight: (str, lang) => {
