@@ -4,7 +4,8 @@ Google Docs-style inline annotations for markdown files, with built-in Claude Co
 
 Select text in the rendered markdown, leave comments, and Claude responds directly in the annotation thread, all without leaving the terminal.
 
-https://github.com/DarrenTsung/md-annotate/raw/main/md-annotate-demo.mp4
+https://github.com/user-attachments/assets/26def228-63a3-47b4-a444-a38e56474a15
+
 
 ## How it works
 
