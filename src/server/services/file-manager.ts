@@ -195,6 +195,8 @@ export class FileManager {
           if (content === state!.lastSidecarContent) return;
           state!.lastSidecarContent = content;
           console.log(`[${filePath}] Sidecar changed externally, pushing update...`);
+          // Merge disk changes into memory (preserves in-flight annotations)
+          annotationService.reloadFromDisk();
           this.broadcastToFile(state!, {
             type: 'annotations-changed',
             filePath,
@@ -209,6 +211,7 @@ export class FileManager {
     sidecarWatcher.on('change', onSidecarChange);
     sidecarWatcher.on('add', () => {
       console.log(`[${filePath}] Sidecar created, pushing update...`);
+      annotationService.reloadFromDisk();
       this.broadcastToFile(state!, {
         type: 'annotations-changed',
         filePath,

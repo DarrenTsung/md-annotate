@@ -13,65 +13,72 @@ const CONTEXT_LENGTH = 30;
 export class AnnotationService {
   private sidecarPath: string;
   private filePath: string;
-  /** In-memory cache so annotations survive brief sidecar deletions. */
-  private cache: AnnotationFile | null = null;
+  /** Authoritative in-memory state. All mutations go through here, then
+   *  persist to disk. Eliminates read-modify-write races where concurrent
+   *  operations (e.g. user creates annotation while reanchor writes) would
+   *  overwrite each other's changes. */
+  private data: AnnotationFile;
 
   constructor(filePath: string) {
     this.filePath = filePath;
     this.sidecarPath = filePath + '.annotations.json';
+    this.data = this.loadFromDisk();
   }
 
   getSidecarPath(): string {
     return this.sidecarPath;
   }
 
-  read(): AnnotationFile {
+  private loadFromDisk(): AnnotationFile {
     if (!fs.existsSync(this.sidecarPath)) {
-      // Sidecar missing: return cached data if available (survives brief
-      // disk deletions from atomic writes / git operations).
-      if (this.cache) return this.cache;
-      return {
-        version: 1,
-        filePath: this.filePath,
-        annotations: [],
-      };
+      return { version: 1, filePath: this.filePath, annotations: [] };
     }
     try {
       const raw = fs.readFileSync(this.sidecarPath, 'utf-8');
-      const data = JSON.parse(raw) as AnnotationFile;
-      this.cache = data;
-      return data;
+      return JSON.parse(raw) as AnnotationFile;
     } catch {
-      if (this.cache) return this.cache;
-      return {
-        version: 1,
-        filePath: this.filePath,
-        annotations: [],
-      };
+      return { version: 1, filePath: this.filePath, annotations: [] };
     }
   }
 
-  private write(data: AnnotationFile): void {
-    this.cache = data;
-    fs.writeFileSync(this.sidecarPath, JSON.stringify(data, null, 2) + '\n');
+  /** Reload from disk, merging any annotations that only exist in memory.
+   *  Used when the sidecar is changed externally (e.g. by another process). */
+  reloadFromDisk(): void {
+    const disk = this.loadFromDisk();
+    // Merge: keep in-memory annotations that aren't on disk (they may
+    // have been created between the disk write and now).
+    const diskIds = new Set(disk.annotations.map((a) => a.id));
+    for (const memAnnotation of this.data.annotations) {
+      if (!diskIds.has(memAnnotation.id)) {
+        disk.annotations.push(memAnnotation);
+      }
+    }
+    this.data = disk;
+  }
+
+  read(): AnnotationFile {
+    return this.data;
+  }
+
+  private persist(): void {
+    fs.writeFileSync(this.sidecarPath, JSON.stringify(this.data, null, 2) + '\n');
   }
 
   /** Remove all annotations (used when the file is deleted and recreated). */
   clear(): void {
-    this.cache = null;
+    this.data = { version: 1, filePath: this.filePath, annotations: [] };
     try { fs.unlinkSync(this.sidecarPath); } catch { /* already gone */ }
   }
 
   getAll(): Annotation[] {
-    return this.read().annotations.filter((a) => a.status !== 'deleted');
+    return this.data.annotations.filter((a) => a.status !== 'deleted');
   }
 
   getById(id: string): Annotation | undefined {
-    return this.read().annotations.find((a) => a.id === id);
+    return this.data.annotations.find((a) => a.id === id);
   }
 
   create(req: CreateAnnotationRequest): Annotation {
-    const data = this.read();
     const now = new Date().toISOString();
 
     const annotation: Annotation = {
@@ -97,8 +104,8 @@ export class AnnotationService {
       updatedAt: now,
     };
 
-    data.annotations.push(annotation);
-    this.write(data);
+    this.data.annotations.push(annotation);
+    this.persist();
     return annotation;
   }
 
@@ -106,11 +113,10 @@ export class AnnotationService {
     id: string,
     updates: Partial<Pick<Annotation, 'status' | 'working'>>
   ): Annotation | null {
-    const data = this.read();
-    const idx = data.annotations.findIndex((a) => a.id === id);
+    const idx = this.data.annotations.findIndex((a) => a.id === id);
     if (idx === -1) return null;
 
-    const annotation = data.annotations[idx];
+    const annotation = this.data.annotations[idx];
     if (updates.status !== undefined) {
       annotation.status = updates.status;
     }
@@ -118,24 +124,21 @@ export class AnnotationService {
       annotation.working = updates.working;
     }
     annotation.updatedAt = new Date().toISOString();
-    data.annotations[idx] = annotation;
-    this.write(data);
+    this.persist();
     return annotation;
   }
 
   delete(id: string): boolean {
-    const data = this.read();
-    const idx = data.annotations.findIndex((a) => a.id === id);
+    const idx = this.data.annotations.findIndex((a) => a.id === id);
     if (idx === -1) return false;
-    data.annotations[idx].status = 'deleted';
-    data.annotations[idx].updatedAt = new Date().toISOString();
-    this.write(data);
+    this.data.annotations[idx].status = 'deleted';
+    this.data.annotations[idx].updatedAt = new Date().toISOString();
+    this.persist();
     return true;
   }
 
   addComment(annotationId: string, author: string, text: string): Comment | null {
-    const data = this.read();
-    const annotation = data.annotations.find((a) => a.id === annotationId);
+    const annotation = this.data.annotations.find((a) => a.id === annotationId);
     if (!annotation) return null;
 
     const comment: Comment = {
@@ -147,22 +150,23 @@ export class AnnotationService {
 
     annotation.comments.push(comment);
     annotation.updatedAt = new Date().toISOString();
-    this.write(data);
+    this.persist();
     return comment;
   }
 
   markSentToClaude(ids: string[]): void {
-    const data = this.read();
-    for (const annotation of data.annotations) {
-      if (ids.includes(annotation.id)) {
+    let changed = false;
+    for (const annotation of this.data.annotations) {
+      if (ids.includes(annotation.id) && !annotation.sentToClaude) {
         annotation.sentToClaude = true;
+        changed = true;
       }
     }
-    this.write(data);
+    if (changed) this.persist();
   }
 
   getUnsentAnnotations(): Annotation[] {
-    return this.read().annotations.filter(
+    return this.data.annotations.filter(
       (a) => !a.sentToClaude && a.status === 'open'
     );
   }
@@ -172,10 +176,9 @@ export class AnnotationService {
    * Returns updated annotations and whether any were changed.
    */
   reanchor(newContent: string): { annotations: Annotation[]; changed: boolean } {
-    const data = this.read();
     let changed = false;
 
-    for (const annotation of data.annotations) {
+    for (const annotation of this.data.annotations) {
       // Check if text still matches at stored offsets
       const currentSlice = newContent.slice(
         annotation.startOffset,
@@ -277,9 +280,9 @@ export class AnnotationService {
     }
 
     if (changed) {
-      this.write(data);
+      this.persist();
     }
 
-    return { annotations: data.annotations, changed };
+    return { annotations: this.data.annotations, changed };
   }
 }
