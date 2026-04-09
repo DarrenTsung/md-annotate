@@ -150,6 +150,8 @@ body {
   margin: 0 auto;
   padding: 24px 28px 60px;
   line-height: 1.6;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Minimap */
@@ -319,9 +321,11 @@ body {
 
 .markdown-viewer table {
   border-collapse: collapse;
-  width: 100%;
+  align-self: center;
+  max-width: 100%;
   margin: 0 0 0.75em;
   font-size: 0.93em;
+  overflow-x: auto;
 }
 
 .markdown-viewer th,

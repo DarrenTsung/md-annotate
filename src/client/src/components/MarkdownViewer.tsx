@@ -1,5 +1,6 @@
-import React, { useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useLayoutEffect } from 'react';
 import mermaid from 'mermaid';
+import morphdom from 'morphdom';
 import type { Annotation, DiffHunk } from '@shared/types.js';
 import { applyHighlights, applyPendingHighlight } from '../lib/highlight.js';
 import { applyDiffOverlay } from '../lib/diffOverlay.js';
@@ -9,6 +10,27 @@ import { Minimap } from './Minimap.js';
 import type { SourceOffset } from '../lib/offsets.js';
 
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+
+/**
+ * Find the block element closest to the viewport top — used as the scroll
+ * anchor reference point before DOM updates.
+ */
+function findAnchorElement(container: HTMLElement): HTMLElement | null {
+  if (window.scrollY < 10) return null;
+
+  const blocks = container.querySelectorAll('[data-source-start]');
+  let best: HTMLElement | null = null;
+  let bestDistance = Infinity;
+
+  for (const block of blocks) {
+    const distance = Math.abs(block.getBoundingClientRect().top);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = block as HTMLElement;
+    }
+  }
+  return best;
+}
 
 interface MarkdownViewerProps {
   renderedHtml: string;
@@ -40,9 +62,78 @@ export function MarkdownViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const { selection, clearSelection } = useTextSelection(containerRef, rawMarkdown);
 
-  // Memoize so React's reference check skips innerHTML re-assignment
-  // when only activeAnnotationId changes (not renderedHtml)
-  const htmlPayload = useMemo(() => ({ __html: renderedHtml }), [renderedHtml]);
+  // --- Content freeze during comment composition ---
+  // While the selection popover is open, freeze the displayed content so
+  // file edits don't shift the viewport or invalidate the pending highlight.
+  const frozenContentRef = useRef<{ html: string; markdown: string } | null>(null);
+
+  if (selection && !frozenContentRef.current) {
+    frozenContentRef.current = { html: renderedHtml, markdown: rawMarkdown };
+  } else if (!selection) {
+    frozenContentRef.current = null;
+  }
+
+  const displayHtml = frozenContentRef.current?.html ?? renderedHtml;
+  const displayMarkdown = frozenContentRef.current?.markdown ?? rawMarkdown;
+
+  // --- Incremental DOM updates with morphdom + scroll anchoring ---
+  // morphdom makes minimal DOM changes, preserving unchanged nodes. We capture
+  // the scroll anchor before updating, then adjust scroll after paint (scrollBy
+  // doesn't take effect during useLayoutEffect after DOM mutations).
+  const prevDisplayHtmlRef = useRef<string>('');
+  const scrollAdjustRef = useRef<{ el: HTMLElement; offset: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (displayHtml === prevDisplayHtmlRef.current) return;
+    prevDisplayHtmlRef.current = displayHtml;
+
+    if (container.children.length === 0) {
+      container.innerHTML = displayHtml;
+      return;
+    }
+
+    // Capture scroll anchor before morphing
+    const anchorEl = findAnchorElement(container);
+    const anchorOffset = anchorEl?.getBoundingClientRect().top ?? 0;
+
+    const target = document.createElement('article');
+    target.innerHTML = displayHtml;
+    morphdom(container, target, {
+      childrenOnly: true,
+      getNodeKey(node) {
+        if (node instanceof HTMLElement) {
+          return node.tagName + ':' + (node.textContent || '').slice(0, 80);
+        }
+        return undefined;
+      },
+      onBeforeElUpdated(from, to) {
+        if (from.isEqualNode(to)) return false;
+        return true;
+      },
+    });
+
+    // Store anchor info for post-paint scroll adjustment
+    if (anchorEl && anchorEl.isConnected) {
+      scrollAdjustRef.current = { el: anchorEl, offset: anchorOffset };
+    }
+  }, [displayHtml]);
+
+  // Adjust scroll after paint — the browser needs to complete layout before
+  // scroll operations take effect after DOM mutations.
+  useEffect(() => {
+    const adj = scrollAdjustRef.current;
+    if (!adj) return;
+    scrollAdjustRef.current = null;
+
+    if (!adj.el.isConnected) return;
+    const newOffset = adj.el.getBoundingClientRect().top;
+    const adjustment = newOffset - adj.offset;
+    if (Math.abs(adjustment) > 1) {
+      window.scrollBy(0, adjustment);
+    }
+  }, [displayHtml]);
 
   // Apply highlights only when annotations or HTML change — NOT activeAnnotationId.
   // useLayoutEffect to avoid flash between cleanup and re-apply.
@@ -51,10 +142,10 @@ export function MarkdownViewer({
     if (!container) return;
 
     const scrollY = window.scrollY;
-    const cleanup = applyHighlights(container, annotations, rawMarkdown);
+    const cleanup = applyHighlights(container, annotations, displayMarkdown);
     window.scrollTo(0, scrollY);
     return cleanup;
-  }, [annotations, renderedHtml, rawMarkdown]);
+  }, [annotations, displayHtml, displayMarkdown]);
 
   // Toggle active class on marks — separate from highlight injection so
   // clicking a comment never tears down / re-creates the mark elements.
@@ -70,7 +161,7 @@ export function MarkdownViewer({
         .querySelectorAll(`mark[data-annotation-id="${activeAnnotationId}"]`)
         .forEach((m) => m.classList.add('active'));
     }
-  }, [activeAnnotationId, annotations, renderedHtml]);
+  }, [activeAnnotationId, annotations, displayHtml]);
 
   // Scroll to and blink the active highlight when a comment is selected
   useEffect(() => {
@@ -109,7 +200,7 @@ export function MarkdownViewer({
       selection.offset.startOffset,
       selection.offset.endOffset,
       selection.offset.selectedText,
-      rawMarkdown
+      displayMarkdown
     );
     // DOM manipulation can shift scroll; restore it
     window.scrollTo(0, scrollY);
@@ -125,7 +216,7 @@ export function MarkdownViewer({
     const cleanup = applyDiffOverlay(container, shownDiffHunks);
     window.scrollTo(0, scrollY);
     return cleanup;
-  }, [shownDiffHunks, renderedHtml]);
+  }, [shownDiffHunks, displayHtml]);
 
   // Render mermaid diagrams after HTML is injected
   useEffect(() => {
@@ -162,7 +253,7 @@ export function MarkdownViewer({
     })();
 
     return () => { cancelled = true; };
-  }, [renderedHtml]);
+  }, [displayHtml]);
 
   // Cmd+C copies the selected text and dismisses the popover
   useEffect(() => {
@@ -255,13 +346,9 @@ export function MarkdownViewer({
 
   function handleSubmitComment(comment: string) {
     if (selection) {
-      const scrollY = window.scrollY;
       onCreateAnnotation(selection.offset, comment);
       clearSelection();
-      // Restore scroll after React re-renders to prevent viewport jump
-      requestAnimationFrame(() => {
-        window.scrollTo(0, scrollY);
-      });
+      // Scroll anchoring handles viewport stability on the unfreeze re-render
     }
   }
 
@@ -270,7 +357,6 @@ export function MarkdownViewer({
       <article
         ref={containerRef}
         className="markdown-viewer"
-        dangerouslySetInnerHTML={htmlPayload}
       />
       <Minimap contentRef={containerRef} />
       {selection && (
