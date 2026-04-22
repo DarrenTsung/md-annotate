@@ -12,6 +12,31 @@ import type { SourceOffset } from '../lib/offsets.js';
 mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
 
 /**
+ * Assign a unique `data-morph-key` to every descendant so morphdom's keyed
+ * matching can reuse unchanged nodes without duplicating blocks that share
+ * identical text (e.g. several paragraphs containing just "Procedure:"). We
+ * prefer tagName+text as the base so reuse survives source-offset shifts,
+ * and append an occurrence counter to disambiguate collisions.
+ */
+function assignMorphKeys(root: HTMLElement): void {
+  const counts = new Map<string, number>();
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+  let node: Element | null;
+  while ((node = walker.nextNode() as Element | null)) {
+    const el = node as HTMLElement;
+    const text = (el.textContent || '').slice(0, 80);
+    if (!text) {
+      el.removeAttribute('data-morph-key');
+      continue;
+    }
+    const base = el.tagName + ':' + text;
+    const n = counts.get(base) ?? 0;
+    counts.set(base, n + 1);
+    el.setAttribute('data-morph-key', n === 0 ? base : `${base}#${n}`);
+  }
+}
+
+/**
  * Find the block element closest to the viewport top — used as the scroll
  * anchor reference point before DOM updates.
  */
@@ -100,11 +125,13 @@ export function MarkdownViewer({
 
     const target = document.createElement('article');
     target.innerHTML = displayHtml;
+    assignMorphKeys(container);
+    assignMorphKeys(target);
     morphdom(container, target, {
       childrenOnly: true,
       getNodeKey(node) {
         if (node instanceof HTMLElement) {
-          return node.tagName + ':' + (node.textContent || '').slice(0, 80);
+          return node.getAttribute('data-morph-key') ?? undefined;
         }
         return undefined;
       },
