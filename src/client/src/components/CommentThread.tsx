@@ -151,6 +151,13 @@ export function CommentThread({
             <div className="comment-text" dangerouslySetInnerHTML={{ __html: renderCommentMarkdown(comment.text) }} />
           </div>
         ))}
+        {annotation.working && (
+          <div className="thread-comment claude-comment typing-indicator" aria-label="Claude is typing">
+            <div className="typing-dots">
+              <span /><span /><span />
+            </div>
+          </div>
+        )}
       </div>
 
       {isActive && (
