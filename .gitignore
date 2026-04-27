@@ -2,3 +2,4 @@ node_modules/
 dist/
 *.annotations.json
 .playwright-cli/
+.DS_Store
