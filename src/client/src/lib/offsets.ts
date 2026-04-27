@@ -36,23 +36,26 @@ function findSourceElement(node: Node): HTMLElement | null {
 }
 
 /**
- * Get the text offset of a point within an element by walking its text nodes.
+ * Get the text offset of a point within an element. Uses a Range so that
+ * element endpoints (e.g. `endContainer = <li>, endOffset = 1`, which the
+ * browser commonly produces when a double-click+drag selection lands at the
+ * boundary between blocks) resolve correctly. A text-node walk would miss
+ * the element target and silently return the block's full text length,
+ * which then expands the selection across the entire next block.
  */
 function getTextOffsetInElement(
   container: Node,
   targetNode: Node,
   targetOffset: number
 ): number {
-  let offset = 0;
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  let node: Node | null;
-  while ((node = walker.nextNode())) {
-    if (node === targetNode) {
-      return offset + targetOffset;
-    }
-    offset += (node.textContent || '').length;
+  const range = document.createRange();
+  range.selectNodeContents(container);
+  try {
+    range.setEnd(targetNode, targetOffset);
+  } catch {
+    return 0;
   }
-  return offset;
+  return range.toString().length;
 }
 
 /**
