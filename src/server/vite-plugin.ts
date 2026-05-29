@@ -18,7 +18,9 @@ export function mdAnnotatePlugin(): Plugin {
 
       // Express sub-app for API routes only
       const app = express();
-      app.use(express.json());
+      // Raise the body limit well above the 100kb default — reply/version
+      // payloads can carry large markdown snapshots that exceed it.
+      app.use(express.json({ limit: '50mb' }));
       app.use('/api', createApiRouter(fileManager));
 
       // Only pass /api requests through Express — let everything else
