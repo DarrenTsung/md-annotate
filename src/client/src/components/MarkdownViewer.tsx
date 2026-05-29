@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useLayoutEffect } from 'react';
 import mermaid from 'mermaid';
 import morphdom from 'morphdom';
-import type { Annotation, DiffHunk } from '@shared/types.js';
+import type { Annotation, CommentKind, DiffHunk } from '@shared/types.js';
 import { applyHighlights, applyPendingHighlight } from '../lib/highlight.js';
 import { applyDiffOverlay } from '../lib/diffOverlay.js';
 import { useTextSelection } from '../hooks/useTextSelection.js';
@@ -62,7 +62,7 @@ interface MarkdownViewerProps {
   rawMarkdown: string;
   annotations: Annotation[];
   activeAnnotationId: string | null;
-  onCreateAnnotation: (offset: SourceOffset, comment: string) => void;
+  onCreateAnnotation: (offset: SourceOffset, comment: string, kind: CommentKind) => void;
   onHighlightClick: (annotationId: string) => void;
   onActionButtonClick: (action: string, sourceStart: number, sourceEnd: number, selectedText: string) => void;
   onNavigateFile: (resolvedPath: string) => void;
@@ -317,7 +317,12 @@ export function MarkdownViewer({
           // Use rendered text content (excluding action button labels) so the
           // highlight code can find an exact match instead of falling back to
           // offset-ratio positioning which bleeds into adjacent elements.
-          const clone = block.cloneNode(true) as HTMLElement;
+          // In a table the block is the whole <tr>, but the button lives in a
+          // single cell — scope the highlight text to that cell so it doesn't
+          // span (and visually mangle) the entire row.
+          const cell = actionBtn.closest('td, th') as HTMLElement | null;
+          const textSource = cell ?? block;
+          const clone = textSource.cloneNode(true) as HTMLElement;
           clone.querySelectorAll('.action-buttons').forEach((el) => el.remove());
           const selectedText = (clone.textContent || '').trim();
           onActionButtonClick(action, sourceStart, sourceEnd, selectedText);
@@ -371,9 +376,9 @@ export function MarkdownViewer({
     return () => container.removeEventListener('click', handleClick);
   }, [onHighlightClick, onActionButtonClick, onNavigateFile, filePath]);
 
-  function handleSubmitComment(comment: string) {
+  function handleSubmitComment(comment: string, kind: CommentKind) {
     if (selection) {
-      onCreateAnnotation(selection.offset, comment);
+      onCreateAnnotation(selection.offset, comment, kind);
       clearSelection();
       // Scroll anchoring handles viewport stability on the unfreeze re-render
     }

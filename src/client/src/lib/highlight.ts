@@ -149,6 +149,20 @@ function highlightTextInElement(
       if (node.parentElement?.closest('.action-buttons')) {
         return NodeFilter.FILTER_REJECT;
       }
+      // Skip text nodes that are direct children of table-structural
+      // elements (the whitespace between cells/rows). Wrapping these in a
+      // <mark> would place phrasing content directly inside <tr>/<tbody>/…,
+      // which is invalid HTML and mangles the table layout.
+      const parentTag = node.parentElement?.tagName;
+      if (
+        parentTag === 'TR' ||
+        parentTag === 'TABLE' ||
+        parentTag === 'THEAD' ||
+        parentTag === 'TBODY' ||
+        parentTag === 'TFOOT'
+      ) {
+        return NodeFilter.FILTER_REJECT;
+      }
       return NodeFilter.FILTER_ACCEPT;
     },
   });
