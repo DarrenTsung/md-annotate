@@ -286,9 +286,9 @@ export function MarkdownViewer({
 
   // Keyboard shortcuts active while a selection is live:
   //  - Cmd/Ctrl+C copies the selected text and dismisses the popover
-  //  - Delete/Backspace deletes the selected text directly from the file,
-  //    as long as the user hasn't started typing a comment (we don't want to
-  //    nuke the document when they're just backspacing in the comment box).
+  //  - Cmd/Ctrl+Delete (or Cmd/Ctrl+Backspace) deletes the selected text
+  //    directly from the file. The modifier is required so a stray Delete /
+  //    Backspace (e.g. while editing the comment box) can't nuke the document.
   useEffect(() => {
     if (!selection) return;
 
@@ -299,9 +299,10 @@ export function MarkdownViewer({
         return;
       }
 
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        // If focus is in a field the user is actively editing (e.g. they've
-        // typed into the comment box), let the keystroke edit that field.
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'Delete' || e.key === 'Backspace')) {
+        // Once the user has typed a comment, Cmd/Ctrl+Backspace is a normal
+        // line-edit shortcut in the comment box — don't hijack it to delete
+        // the document. A fresh (empty) selection still deletes.
         const el = document.activeElement as HTMLElement | null;
         const editing =
           el &&
