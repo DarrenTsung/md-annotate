@@ -18,6 +18,20 @@ export function createApiRouter(fileManager: FileManager): Router {
     return typeof fp === 'string' && fp.length > 0 ? fp : null;
   }
 
+  // POST /api/navigate?filePath=...&session=...
+  // Fires the "Navigated to <file>" iTerm notification. Called by the client
+  // when the user clicks to a different file (not on refresh).
+  router.post('/navigate', (req, res) => {
+    const filePath = getFilePath(req);
+    const session = typeof req.query.session === 'string' ? req.query.session : null;
+    if (!filePath || !session) {
+      res.status(400).json({ error: 'filePath and session query parameters are required' });
+      return;
+    }
+    fileManager.notifyNavigated(filePath, session);
+    res.json({ ok: true });
+  });
+
   // GET /api/file?filePath=...&session=...
   router.get('/file', (req, res) => {
     const filePath = getFilePath(req);
@@ -235,7 +249,12 @@ export function createApiRouter(fileManager: FileManager): Router {
 
     try {
       const svc = fileManager.getAnnotationService(filePath);
-      const comment = svc.addComment(req.params.id, body.author, body.text);
+      const comment = svc.addComment(
+        req.params.id,
+        body.author,
+        body.text,
+        body.kind ?? 'comment'
+      );
       if (!comment) {
         res.status(404).json({ error: 'Annotation not found' });
         return;
@@ -305,6 +324,25 @@ export function createApiRouter(fileManager: FileManager): Router {
 
     try {
       fileManager.ensureFresh(ctx.filePath);
+
+      // Block if the user added a comment after Claude last read the
+      // annotation — Claude would be replying to stale context. Surface the
+      // new comment(s) inline and mark them read so the retry succeeds.
+      const unread = ctx.svc.getUnreadUserComments(annotationId);
+      if (unread.length > 0) {
+        const formatted = unread
+          .map((c) => `  ${c.kind === 'question' ? '[question] ' : ''}${c.text}`)
+          .join('\n');
+        ctx.svc.markRead(annotationId);
+        res.status(409).json({
+          error:
+            `Cannot reply: ${unread.length} new user comment(s) added since you last read this annotation. ` +
+            `Address the latest below, then re-run reply:\n${formatted}`,
+          newComments: unread,
+        });
+        return;
+      }
+
       const comment = ctx.svc.addComment(annotationId, 'claude', text);
       if (!comment) {
         res.status(404).json({ error: 'Annotation not found' });
@@ -316,6 +354,7 @@ export function createApiRouter(fileManager: FileManager): Router {
         ...(resolve ? { status: 'resolved' as const } : {}),
         working: false,
       });
+      ctx.svc.markRead(annotationId);
 
       fileManager.broadcastAnnotations(ctx.filePath);
       const annotation = ctx.svc.getById(annotationId);
@@ -345,6 +384,21 @@ export function createApiRouter(fileManager: FileManager): Router {
         return;
       }
 
+      const unread = ctx.svc.getUnreadUserComments(ctx.annotationId);
+      if (unread.length > 0) {
+        const formatted = unread
+          .map((c) => `  ${c.kind === 'question' ? '[question] ' : ''}${c.text}`)
+          .join('\n');
+        ctx.svc.markRead(ctx.annotationId);
+        res.status(409).json({
+          error:
+            `Cannot resolve: ${unread.length} new user comment(s) added since you last read this annotation. ` +
+            `Address the latest below before resolving:\n${formatted}`,
+          newComments: unread,
+        });
+        return;
+      }
+
       ctx.svc.update(ctx.annotationId, { status: 'resolved' });
       fileManager.broadcastAnnotations(ctx.filePath);
       res.json({ annotationId: ctx.annotationId, status: 'resolved' });
@@ -365,6 +419,7 @@ export function createApiRouter(fileManager: FileManager): Router {
         res.status(404).json({ error: 'Annotation not found' });
         return;
       }
+      ctx.svc.markRead(ctx.annotationId);
 
       fileManager.broadcastAnnotations(ctx.filePath);
       res.json({ annotationId: ctx.annotationId, working: true });
@@ -410,10 +465,68 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
 
     try {
+      // If an in-progress annotation has new unread user comments, re-show it
+      // (the user added a follow-up while Claude was working — `reply` errors
+      // direct the LLM here to "re-read with `md-annotate next`"). Otherwise,
+      // refuse to advance: the LLM should reply/resolve/end before moving on,
+      // or it would silently abandon the working annotation.
+      const inProgress: Array<{ filePath: string; annotation: import('../../shared/types.js').Annotation }> = [];
+      for (const fp of filePaths) {
+        fileManager.ensureFresh(fp);
+        const svc = fileManager.getAnnotationService(fp);
+        for (const a of svc.getAll()) {
+          if (a.status === 'open' && a.working) {
+            inProgress.push({ filePath: fp, annotation: a });
+          }
+        }
+      }
+      if (inProgress.length > 0) {
+        const stale = inProgress.find(({ filePath, annotation }) =>
+          fileManager.getAnnotationService(filePath).hasUnreadUserComments(annotation.id)
+        );
+        if (stale) {
+          const svc = fileManager.getAnnotationService(stale.filePath);
+          svc.markRead(stale.annotation.id);
+          fileManager.broadcastAnnotations(stale.filePath);
+          const updated = svc.getById(stale.annotation.id)!;
+          // remaining = other pending annotations not currently in progress
+          let remaining = 0;
+          for (const fp of filePaths) {
+            const s = fileManager.getAnnotationService(fp);
+            for (const a of s.getAll()) {
+              if (a.status !== 'open' || a.working) continue;
+              const last = a.comments[a.comments.length - 1];
+              if (last && last.author === 'user') remaining++;
+            }
+          }
+          res.json({ filePath: stale.filePath, annotation: updated, remaining });
+          return;
+        }
+
+        const lines = inProgress.map(({ filePath, annotation }) => {
+          const quote = annotation.selectedText.length > 50
+            ? annotation.selectedText.slice(0, 47) + '...'
+            : annotation.selectedText;
+          return `  ${annotation.id}  "${quote}"  (${filePath.split('/').pop()})`;
+        });
+        res.status(409).json({
+          error:
+            `Cannot advance: ${inProgress.length} annotation(s) still in progress. ` +
+            `Reply (md-annotate reply <id> "...") or resolve (md-annotate resolve <id>) before calling next. ` +
+            `If you intended to abandon one, run md-annotate end <id>.\n` +
+            lines.join('\n'),
+          inProgress: inProgress.map(({ filePath, annotation }) => ({
+            id: annotation.id,
+            filePath,
+            selectedText: annotation.selectedText,
+          })),
+        });
+        return;
+      }
+
       // Collect pending annotations across all files
       const allPending: Array<{ filePath: string; annotation: import('../../shared/types.js').Annotation }> = [];
       for (const fp of filePaths) {
-        fileManager.ensureFresh(fp);
         const svc = fileManager.getAnnotationService(fp);
         for (const a of svc.getAll()) {
           if (a.status !== 'open') continue;
@@ -436,6 +549,7 @@ export function createApiRouter(fileManager: FileManager): Router {
 
       const svc = fileManager.getAnnotationService(next.filePath);
       svc.update(next.annotation.id, { working: true });
+      svc.markRead(next.annotation.id);
       fileManager.broadcastAnnotations(next.filePath);
 
       const updated = svc.getById(next.annotation.id)!;
@@ -529,6 +643,57 @@ export function createApiRouter(fileManager: FileManager): Router {
       const newContent = content.slice(0, sourceStart) + replacement + content.slice(sourceEnd);
       fs.writeFileSync(filePath, newContent, 'utf-8');
       res.json({ modified: true });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
+  // POST /api/delete-text?filePath=...
+  // Deletes the raw source range [sourceStart, sourceEnd) from the markdown
+  // file. The client supplies contextBefore/contextAfter (raw source captured
+  // at render time) so the server can verify the offsets still line up before
+  // performing a destructive edit — if the file changed underneath, the edit
+  // is refused rather than risk corrupting an unrelated range.
+  router.post('/delete-text', (req, res) => {
+    const filePath = getFilePath(req);
+    if (!filePath) {
+      res.status(400).json({ error: 'filePath query parameter is required' });
+      return;
+    }
+
+    const { sourceStart, sourceEnd, contextBefore, contextAfter } = req.body as {
+      sourceStart: number;
+      sourceEnd: number;
+      contextBefore?: string;
+      contextAfter?: string;
+    };
+    if (sourceStart == null || sourceEnd == null || sourceEnd <= sourceStart) {
+      res.status(400).json({ error: 'valid sourceStart and sourceEnd are required' });
+      return;
+    }
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      if (sourceStart < 0 || sourceEnd > content.length) {
+        res.status(409).json({ error: 'Offsets out of range; file may have changed' });
+        return;
+      }
+
+      // Verify the surrounding context matches what the client rendered from.
+      const before = content.slice(Math.max(0, sourceStart - (contextBefore?.length ?? 0)), sourceStart);
+      const after = content.slice(sourceEnd, sourceEnd + (contextAfter?.length ?? 0));
+      if (
+        (contextBefore != null && before !== contextBefore) ||
+        (contextAfter != null && after !== contextAfter)
+      ) {
+        res.status(409).json({ error: 'Context mismatch; file may have changed since render' });
+        return;
+      }
+
+      const newContent = content.slice(0, sourceStart) + content.slice(sourceEnd);
+      fs.writeFileSync(filePath, newContent, 'utf-8');
+      res.json({ deleted: true });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: message });

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type {
   Annotation,
+  CommentKind,
   CreateAnnotationRequest,
   FileResponse,
   WsMessage,
@@ -22,8 +23,14 @@ interface UseAnnotationsResult {
   createAnnotation: (req: CreateAnnotationRequest) => Promise<Annotation>;
   updateAnnotation: (id: string, status: 'open' | 'resolved') => Promise<void>;
   deleteAnnotation: (id: string) => Promise<void>;
-  addComment: (annotationId: string, text: string) => Promise<void>;
+  addComment: (annotationId: string, text: string, kind?: CommentKind) => Promise<void>;
   removeAction: (action: string, sourceStart: number, sourceEnd: number) => Promise<void>;
+  deleteText: (
+    sourceStart: number,
+    sourceEnd: number,
+    contextBefore: string,
+    contextAfter: string
+  ) => Promise<void>;
   activeAnnotationId: string | null;
   setActiveAnnotationId: (id: string | null) => void;
   versions: VersionEntry[];
@@ -35,6 +42,8 @@ interface UseAnnotationsResult {
   autoShowVersionId: string | null;
   shownDiffHunks: DiffHunk[] | null;
   versionPreview: { rawMarkdown: string; renderedHtml: string } | null;
+  replyDrafts: Record<string, string>;
+  setReplyDraft: (annotationId: string, text: string) => void;
 }
 
 export function useAnnotations({ filePath, session }: UseAnnotationsOptions): UseAnnotationsResult {
@@ -50,6 +59,7 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
   const [autoShowVersionId, setAutoShowVersionId] = useState<string | null>(null);
   const [shownDiffHunks, setShownDiffHunks] = useState<DiffHunk[] | null>(null);
   const [versionPreview, setVersionPreview] = useState<{ rawMarkdown: string; renderedHtml: string } | null>(null);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const previewCacheRef = useRef<Map<string, { rawMarkdown: string; renderedHtml: string; hunks: DiffHunk[] }>>(new Map());
   const autoShowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoShowBaseVersionRef = useRef<string | null>(null);
@@ -134,15 +144,10 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
             case 'annotations-changed':
               if (msg.filePath === filePath) {
                 setAnnotations(msg.annotations);
-                // If the active annotation was resolved by Claude, deselect it
-                // so its CommentForm doesn't remount with autoFocus and steal
-                // keyboard input from whatever the user was typing in.
-                setActiveAnnotationId((prev) => {
-                  if (!prev) return null;
-                  const active = msg.annotations.find((a: Annotation) => a.id === prev);
-                  if (active && active.status === 'resolved') return null;
-                  return prev;
-                });
+                // Keep activeAnnotationId set even when Claude resolves the
+                // active thread — the CommentForm's autoFocus check already
+                // avoids stealing from other textareas, and keeping the form
+                // mounted preserves any draft the user is typing.
               }
               break;
             case 'version-created':
@@ -293,11 +298,32 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
     await api.deleteAnnotation(id);
     setAnnotations((prev) => prev.filter((a) => a.id !== id));
     setActiveAnnotationId((prev) => (prev === id ? null : prev));
+    setReplyDrafts((prev) => {
+      if (!(id in prev)) return prev;
+      const { [id]: _, ...rest } = prev;
+      return rest;
+    });
   }, [api]);
 
+  const setReplyDraft = useCallback((annotationId: string, text: string) => {
+    setReplyDrafts((prev) => {
+      if (!text) {
+        if (!(annotationId in prev)) return prev;
+        const { [annotationId]: _, ...rest } = prev;
+        return rest;
+      }
+      if (prev[annotationId] === text) return prev;
+      return { ...prev, [annotationId]: text };
+    });
+  }, []);
+
   const addComment = useCallback(
-    async (annotationId: string, text: string): Promise<void> => {
-      await api.addComment(annotationId, { author: 'user', text });
+    async (
+      annotationId: string,
+      text: string,
+      kind: CommentKind = 'comment'
+    ): Promise<void> => {
+      await api.addComment(annotationId, { author: 'user', text, kind });
       const anns = await api.getAnnotations();
       setAnnotations(anns);
     },
@@ -307,6 +333,18 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
   const removeAction = useCallback(
     async (action: string, sourceStart: number, sourceEnd: number): Promise<void> => {
       await api.removeAction(action, sourceStart, sourceEnd);
+    },
+    [api]
+  );
+
+  const deleteText = useCallback(
+    async (
+      sourceStart: number,
+      sourceEnd: number,
+      contextBefore: string,
+      contextAfter: string
+    ): Promise<void> => {
+      await api.deleteText(sourceStart, sourceEnd, contextBefore, contextAfter);
     },
     [api]
   );
@@ -321,6 +359,7 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
     deleteAnnotation,
     addComment,
     removeAction,
+    deleteText,
     activeAnnotationId,
     setActiveAnnotationId,
     versions,
@@ -332,5 +371,7 @@ export function useAnnotations({ filePath, session }: UseAnnotationsOptions): Us
     autoShowVersionId,
     shownDiffHunks,
     versionPreview,
+    replyDrafts,
+    setReplyDraft,
   };
 }

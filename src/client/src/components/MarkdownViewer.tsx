@@ -63,6 +63,7 @@ interface MarkdownViewerProps {
   annotations: Annotation[];
   activeAnnotationId: string | null;
   onCreateAnnotation: (offset: SourceOffset, comment: string, kind: CommentKind) => void;
+  onDeleteText: (offset: SourceOffset) => void;
   onHighlightClick: (annotationId: string) => void;
   onActionButtonClick: (action: string, sourceStart: number, sourceEnd: number, selectedText: string) => void;
   onNavigateFile: (resolvedPath: string) => void;
@@ -77,6 +78,7 @@ export function MarkdownViewer({
   annotations,
   activeAnnotationId,
   onCreateAnnotation,
+  onDeleteText,
   onHighlightClick,
   onActionButtonClick,
   onNavigateFile,
@@ -282,7 +284,11 @@ export function MarkdownViewer({
     return () => { cancelled = true; };
   }, [displayHtml]);
 
-  // Cmd+C copies the selected text and dismisses the popover
+  // Keyboard shortcuts active while a selection is live:
+  //  - Cmd/Ctrl+C copies the selected text and dismisses the popover
+  //  - Delete/Backspace deletes the selected text directly from the file,
+  //    as long as the user hasn't started typing a comment (we don't want to
+  //    nuke the document when they're just backspacing in the comment box).
   useEffect(() => {
     if (!selection) return;
 
@@ -290,12 +296,28 @@ export function MarkdownViewer({
       if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
         navigator.clipboard.writeText(selection!.offset.selectedText);
         clearSelection();
+        return;
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // If focus is in a field the user is actively editing (e.g. they've
+        // typed into the comment box), let the keystroke edit that field.
+        const el = document.activeElement as HTMLElement | null;
+        const editing =
+          el &&
+          (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) &&
+          !!(el as HTMLInputElement | HTMLTextAreaElement).value;
+        if (editing) return;
+
+        e.preventDefault();
+        onDeleteText(selection!.offset);
+        clearSelection();
       }
     }
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selection, clearSelection]);
+  }, [selection, clearSelection, onDeleteText]);
 
   // Handle clicks on highlights and anchor links
   useEffect(() => {

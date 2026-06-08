@@ -99,6 +99,20 @@ export function createApi(filePath: string, session: string | null) {
         }
       ),
 
+    deleteText: (
+      sourceStart: number,
+      sourceEnd: number,
+      contextBefore: string,
+      contextAfter: string
+    ) =>
+      request<{ deleted: boolean }>(
+        `/delete-text?${fileQuery(filePath)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ sourceStart, sourceEnd, contextBefore, contextAfter }),
+        }
+      ),
+
     getClaudeStatus: () =>
       request<ClaudeStatusResponse>(
         `/claude/status?${session ? `session=${encodeURIComponent(session)}` : ''}`

@@ -4,6 +4,7 @@ import { Toolbar } from './components/Toolbar.js';
 import { MarkdownViewer } from './components/MarkdownViewer.js';
 import { CommentSidebar } from './components/CommentSidebar.js';
 import type { SourceOffset } from './lib/offsets.js';
+import type { CommentKind } from '@shared/types.js';
 import { getAction } from '@shared/actions.js';
 
 function LandingPage() {
@@ -45,6 +46,7 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
     deleteAnnotation,
     addComment,
     removeAction,
+    deleteText,
     activeAnnotationId,
     setActiveAnnotationId,
     versions,
@@ -56,10 +58,12 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
     autoShowVersionId,
     shownDiffHunks,
     versionPreview,
+    replyDrafts,
+    setReplyDraft,
   } = useAnnotations({ filePath, session });
 
   const handleCreateAnnotation = useCallback(
-    async (offset: SourceOffset, comment: string) => {
+    async (offset: SourceOffset, comment: string, kind: CommentKind) => {
       const annotation = await createAnnotation({
         selectedText: offset.selectedText,
         startOffset: offset.startOffset,
@@ -67,10 +71,24 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
         contextBefore: offset.contextBefore,
         contextAfter: offset.contextAfter,
         commentText: comment,
+        kind,
       });
       setActiveAnnotationId(annotation.id);
     },
     [createAnnotation, setActiveAnnotationId]
+  );
+
+  const handleDeleteText = useCallback(
+    async (offset: SourceOffset) => {
+      await deleteText(
+        offset.startOffset,
+        offset.endOffset,
+        offset.contextBefore,
+        offset.contextAfter
+      );
+      // The file watcher re-renders with the updated content.
+    },
+    [deleteText]
   );
 
   const handleHighlightClick = useCallback(
@@ -86,11 +104,16 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
 
   const handleNavigateFile = useCallback(
     (resolvedPath: string) => {
+      if (session) {
+        const qs = new URLSearchParams({ filePath: resolvedPath, session });
+        // Fire-and-forget; don't block the navigation on this.
+        fetch(`/api/navigate?${qs.toString()}`, { method: 'POST' }).catch(() => {});
+      }
       const params = new URLSearchParams(window.location.search);
       params.set('file', resolvedPath);
       window.location.search = params.toString();
     },
-    []
+    [session]
   );
 
   const handleActionButtonClick = useCallback(
@@ -156,6 +179,7 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
           annotations={annotations}
           activeAnnotationId={activeAnnotationId}
           onCreateAnnotation={handleCreateAnnotation}
+          onDeleteText={handleDeleteText}
           onHighlightClick={handleHighlightClick}
           onActionButtonClick={handleActionButtonClick}
           onNavigateFile={handleNavigateFile}
@@ -171,6 +195,8 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
           onResolve={(id) => updateAnnotation(id, 'resolved')}
           onReopen={(id) => updateAnnotation(id, 'open')}
           onDelete={deleteAnnotation}
+          replyDrafts={replyDrafts}
+          onReplyDraftChange={setReplyDraft}
         />
       </div>
     </div>
