@@ -1,7 +1,27 @@
+import fs from 'node:fs';
 import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
 import type Token from 'markdown-it/lib/token.mjs';
 import hljs from 'highlight.js';
+
+/**
+ * Normalize CRLF / lone-CR line endings to LF.
+ *
+ * markdown-it normalizes line endings internally before computing token
+ * source maps, so the source offsets we emit are relative to an LF string.
+ * The raw markdown the client uses for selection→offset mapping (and the
+ * content the server slices for edits) must be the SAME LF-normalized string,
+ * or every stripped `\r` shifts the offsets and selections land off-target.
+ * Normalizing on read keeps all three in sync.
+ */
+export function normalizeLineEndings(s: string): string {
+  return s.replace(/\r\n?/g, '\n');
+}
+
+/** Read a markdown file from disk with line endings normalized to LF. */
+export function readMarkdownFileSync(filePath: string): string {
+  return normalizeLineEndings(fs.readFileSync(filePath, 'utf-8'));
+}
 
 // Custom markdown-it plugin that adds data-source-offset attributes to block elements
 function sourceOffsetPlugin(md: MarkdownIt) {
@@ -38,6 +58,29 @@ function sourceOffsetPlugin(md: MarkdownIt) {
 
 }
 
+// hljs's grammars (notably Go) don't tag function-call identifiers, so they
+// render as bare text. Wrap any IDENT immediately followed by `(` (excluding
+// language keywords / built-ins) so the syntax theme can color them.
+const FN_NAME_RE = /(>|^|[\s.,;:(){}[\]&|*=+\-/<!])([A-Za-z_$][A-Za-z0-9_$]*)(\s*\()/g;
+const FN_DENYLIST = new Set([
+  'if', 'for', 'while', 'switch', 'case', 'default', 'return', 'break',
+  'continue', 'go', 'defer', 'select', 'range', 'func', 'fn', 'function',
+  'def', 'class', 'struct', 'interface', 'type', 'package', 'import',
+  'const', 'let', 'var', 'static', 'public', 'private', 'protected',
+  'do', 'else', 'try', 'catch', 'finally', 'throw', 'with', 'await',
+  'async', 'yield', 'new', 'delete', 'typeof', 'instanceof', 'in', 'of',
+  'and', 'or', 'not', 'is', 'as', 'lambda', 'pass', 'true', 'false', 'nil',
+  'null', 'undefined', 'self', 'super', 'this', 'sizeof', 'use', 'mut',
+  'pub', 'impl', 'where', 'unsafe', 'move',
+]);
+
+function wrapFunctionCalls(html: string): string {
+  return html.replace(FN_NAME_RE, (full, prefix, name, post) => {
+    if (FN_DENYLIST.has(name)) return full;
+    return `${prefix}<span class="hljs-title function_">${name}</span>${post}`;
+  });
+}
+
 let mdInstance: MarkdownIt | null = null;
 
 function getMd(): MarkdownIt {
@@ -50,7 +93,7 @@ function getMd(): MarkdownIt {
       highlight: (str, lang) => {
         if (lang && hljs.getLanguage(lang)) {
           try {
-            return hljs.highlight(str, { language: lang }).value;
+            return wrapFunctionCalls(hljs.highlight(str, { language: lang }).value);
           } catch {
             // fall through
           }

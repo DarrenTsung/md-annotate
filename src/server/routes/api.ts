@@ -6,7 +6,7 @@ import type {
   UpdateAnnotationRequest,
 } from '../../shared/types.js';
 import type { FileManager } from '../services/file-manager.js';
-import { renderMarkdown } from '../services/markdown.js';
+import { renderMarkdown, readMarkdownFileSync } from '../services/markdown.js';
 import { enrichHunks } from '../services/diff-enrich.js';
 
 export function createApiRouter(fileManager: FileManager): Router {
@@ -615,7 +615,7 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
 
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
+      const content = readMarkdownFileSync(filePath);
       const block = content.slice(sourceStart, sourceEnd);
 
       // Find the @actions comment in this block
@@ -674,7 +674,7 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
 
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
+      const content = readMarkdownFileSync(filePath);
       if (sourceStart < 0 || sourceEnd > content.length) {
         res.status(409).json({ error: 'Offsets out of range; file may have changed' });
         return;

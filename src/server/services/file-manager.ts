@@ -2,7 +2,7 @@ import fs from 'fs';
 import { watch, type FSWatcher } from 'chokidar';
 import type { WebSocket } from 'ws';
 
-import { renderMarkdown } from './markdown.js';
+import { renderMarkdown, readMarkdownFileSync } from './markdown.js';
 import { AnnotationService } from './annotations.js';
 import { ItermBridge } from './iterm-bridge.js';
 import { VersionHistory } from './version-history.js';
@@ -80,7 +80,7 @@ export class FileManager {
       throw new Error(`File not found: ${filePath}`);
     }
 
-    const rawMarkdown = fs.readFileSync(filePath, 'utf-8');
+    const rawMarkdown = readMarkdownFileSync(filePath);
     const renderedHtml = renderMarkdown(rawMarkdown);
     const annotationService = new AnnotationService(filePath);
     const versionHistory = new VersionHistory(filePath);
@@ -164,7 +164,7 @@ export class FileManager {
       // content change, preserving annotations and sessions.
       console.log(`[${filePath}] Atomic write detected (unlink+add), reloading...`);
       try {
-        const newContent = fs.readFileSync(filePath, 'utf-8');
+        const newContent = readMarkdownFileSync(filePath);
         handleFileContent(newContent);
       } catch {
         // File might not be fully written yet
@@ -173,7 +173,7 @@ export class FileManager {
 
     mdWatcher.on('change', () => {
       console.log(`[${filePath}] Markdown changed, reloading...`);
-      const newContent = fs.readFileSync(filePath, 'utf-8');
+      const newContent = readMarkdownFileSync(filePath);
       handleFileContent(newContent);
     });
 
@@ -233,13 +233,12 @@ export class FileManager {
     const state = this.getOrCreate(filePath);
     state.clients.add(ws);
     if (session) {
-      // Detect if this session was previously on a different file
-      let previousFile: string | null = null;
+      // Drop this session from any other files' state. Refreshes shouldn't
+      // emit a navigation message — that's why we don't notify here. The
+      // client calls /api/navigate explicitly when the user clicks to a
+      // different file.
       for (const [otherPath, otherState] of this.files) {
-        if (otherPath !== filePath && otherState.sessions.has(session)) {
-          previousFile = otherPath;
-          otherState.sessions.delete(session);
-        }
+        if (otherPath !== filePath) otherState.sessions.delete(session);
       }
 
       // Only one session owns a file at a time. Evict previous sessions
@@ -250,16 +249,16 @@ export class FileManager {
         console.log(`[${filePath}] Session ${session.slice(0, 16)}... replaced ${evicted.map(s => s.slice(0, 16) + '...').join(', ')}`);
       }
       state.sessions.add(session);
-
-      // Notify the Claude session that the file changed
-      if (previousFile) {
-        const fileName = filePath.split('/').pop();
-        this.itermBridge.sendNotification(
-          session,
-          `[md-annotate] Navigated to ${fileName} (${filePath})`
-        );
-      }
     }
+  }
+
+  /** Emit a "Navigated to <file>" iTerm notification for the session. */
+  notifyNavigated(filePath: string, session: string): void {
+    const fileName = filePath.split('/').pop();
+    this.itermBridge.sendNotification(
+      session,
+      `[md-annotate] Navigated to ${fileName} (${filePath})`
+    );
   }
 
   /**
@@ -367,7 +366,7 @@ export class FileManager {
 
     let currentContent: string;
     try {
-      currentContent = fs.readFileSync(filePath, 'utf-8');
+      currentContent = readMarkdownFileSync(filePath);
     } catch {
       return;
     }
