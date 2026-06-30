@@ -1,9 +1,10 @@
 import React, { useState, useRef, useLayoutEffect } from 'react';
+import type { CommentKind } from '@shared/types.js';
 
 interface SelectionPopoverProps {
   rect: DOMRect;
   selectedText: string;
-  onSubmit: (comment: string) => void;
+  onSubmit: (comment: string, kind: CommentKind) => void;
   onCancel: () => void;
 }
 
@@ -20,19 +21,21 @@ export function SelectionPopover({
   const [comment, setComment] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  function submit(kind: CommentKind) {
+    if (comment.trim()) {
+      onSubmit(comment.trim(), kind);
+    }
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (comment.trim()) {
-      onSubmit(comment.trim());
-    }
+    submit('comment');
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      if (comment.trim()) {
-        onSubmit(comment.trim());
-      }
+      submit('comment');
     }
     if (e.key === 'Escape') {
       onCancel();
@@ -49,14 +52,18 @@ export function SelectionPopover({
     if (!el) return;
     const parent = el.offsetParent as HTMLElement | null;
     const parentRect = parent?.getBoundingClientRect() ?? { top: 0, left: 0 };
+    // The offset parent scrolls internally, so absolute coords are relative to
+    // its content origin — add the scroll offset to convert from viewport coords.
+    const scrollTop = parent?.scrollTop ?? 0;
+    const scrollLeft = parent?.scrollLeft ?? 0;
 
     const spaceBelow = window.innerHeight - rect.bottom;
     const placeAbove = spaceBelow < POPOVER_HEIGHT + GAP && rect.top > POPOVER_HEIGHT + GAP;
 
-    const top = placeAbove
+    const top = (placeAbove
       ? rect.top - parentRect.top - POPOVER_HEIGHT - GAP
-      : rect.bottom - parentRect.top + GAP;
-    const left = Math.max(0, rect.left - parentRect.left);
+      : rect.bottom - parentRect.top + GAP) + scrollTop;
+    const left = Math.max(0, rect.left - parentRect.left + scrollLeft);
 
     setPos({ top, left: Math.min(left, (parent?.clientWidth ?? window.innerWidth) - POPOVER_WIDTH) });
   }, [rect]);
@@ -95,6 +102,15 @@ export function SelectionPopover({
         <div className="popover-actions">
           <button type="button" className="btn btn-secondary" onClick={onCancel}>
             Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={!comment.trim()}
+            onClick={() => submit('question')}
+            title="Ask Claude to clarify without modifying the document"
+          >
+            Question
           </button>
           <button
             type="submit"

@@ -15,16 +15,13 @@
   min-width: var(--sidebar-width);
   border-left: 1px solid var(--border);
   background: var(--bg);
-  height: calc(100vh - var(--toolbar-height));
-  position: sticky;
-  top: var(--toolbar-height);
+  height: 100%;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
 
 .sidebar-header {
-  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -41,6 +38,146 @@
   font-weight: 400;
   color: var(--text-secondary);
   font-size: 11px;
+}
+
+/* Sidebar tabs */
+.sidebar-tabs {
+  display: flex;
+}
+
+.sidebar-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.sidebar-tab:hover {
+  background: var(--bg-secondary);
+}
+
+.sidebar-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--primary);
+}
+
+.unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Focused review view */
+.focus-review {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.focus-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.focus-progress {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.focus-progress-total {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.focus-header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.focus-header-actions .thread-icon-btn {
+  opacity: 0.6;
+}
+
+.focus-header-actions .thread-icon-btn:hover {
+  opacity: 1;
+}
+
+.focus-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.focus-body .comment-thread {
+  cursor: default;
+  border-bottom: none;
+}
+
+.focus-footer {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.focus-footer .comment-form {
+  margin: 0;
+}
+
+.focus-next {
+  align-self: flex-end;
+}
+
+.focus-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.focus-empty-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #e6f6e6;
+  color: var(--success);
+  font-size: 18px;
 }
 
 .sidebar-threads {
@@ -181,6 +318,12 @@
   opacity: 1;
   color: var(--danger);
   background: #ffeef0;
+}
+
+.thread-collapse:hover {
+  opacity: 1;
+  color: var(--text);
+  background: var(--bg-secondary);
 }
 
 .comment-thread:hover {
@@ -343,6 +486,17 @@
 .comment-time {
   font-size: 10px;
   color: var(--text-muted);
+}
+
+.comment-kind-badge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--accent-soft, rgba(99, 102, 241, 0.12));
+  color: var(--accent, #6366f1);
 }
 
 .comment-text {

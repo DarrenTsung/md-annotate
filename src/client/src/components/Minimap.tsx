@@ -3,13 +3,15 @@ import React, { useRef, useEffect, useCallback } from 'react';
 interface MinimapProps {
   /** Ref to the markdown article element */
   contentRef: React.RefObject<HTMLElement | null>;
+  /** Ref to the scrollable column wrapping the article */
+  scrollRef: React.RefObject<HTMLElement | null>;
 }
 
 /**
  * VS Code-style minimap showing a scaled-down representation of the document
  * with diff coloring and a viewport indicator.
  */
-export function Minimap({ contentRef }: MinimapProps) {
+export function Minimap({ contentRef, scrollRef }: MinimapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
@@ -19,7 +21,8 @@ export function Minimap({ contentRef }: MinimapProps) {
     const canvas = canvasRef.current;
     const content = contentRef.current;
     const wrapper = containerRef.current;
-    if (!canvas || !content || !wrapper) return;
+    const scroller = scrollRef.current;
+    if (!canvas || !content || !wrapper || !scroller) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -34,11 +37,8 @@ export function Minimap({ contentRef }: MinimapProps) {
     ctx.scale(dpr, dpr);
 
     const docHeight = content.scrollHeight;
-    const viewportHeight = window.innerHeight;
-    const scrollTop = window.scrollY;
-    const toolbarHeight = parseInt(
-      getComputedStyle(document.documentElement).getPropertyValue('--toolbar-height') || '0'
-    );
+    const viewportHeight = scroller.clientHeight;
+    const scrollTop = scroller.scrollTop;
 
     // Scale factor: cap at a natural density so short docs don't stretch
     // to fill the full minimap height. ~0.15 means 1px in the minimap ≈ 7px
@@ -55,7 +55,9 @@ export function Minimap({ contentRef }: MinimapProps) {
     );
 
     const contentRect = content.getBoundingClientRect();
-    const contentTop = contentRect.top + scrollTop - toolbarHeight;
+    const scrollerRect = scroller.getBoundingClientRect();
+    // Where the content begins within the scroller's scrollable area.
+    const contentOffset = contentRect.top - scrollerRect.top + scrollTop;
 
     // Base text color
     const textColor = getComputedStyle(document.documentElement)
@@ -63,7 +65,7 @@ export function Minimap({ contentRef }: MinimapProps) {
 
     for (const block of blocks) {
       const rect = block.getBoundingClientRect();
-      const top = rect.top + scrollTop - toolbarHeight - contentTop;
+      const top = rect.top - contentRect.top;
       const height = rect.height;
       const y = top * scale;
       const h = Math.max(1, height * scale);
@@ -128,13 +130,40 @@ export function Minimap({ contentRef }: MinimapProps) {
       }
     }
 
+    // Draw embedded HTML widgets as a subtle diagonal-hatch panel (same muted
+    // gray as prose) so they read as a distinct region without standing out.
+    const embeds = content.querySelectorAll('.html-embed');
+    for (const embed of embeds) {
+      const rect = embed.getBoundingClientRect();
+      if (rect.height === 0) continue;
+      const y = (rect.top - contentRect.top) * scale;
+      const h = Math.max(3, rect.height * scale);
+      const x = 2;
+      const w = mapWidth - 4;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y, w, h);
+      ctx.clip();
+      ctx.strokeStyle = textColor;
+      ctx.globalAlpha = 0.2;
+      ctx.lineWidth = 1;
+      const gap = 4;
+      for (let dx = -h; dx < w; dx += gap) {
+        ctx.beginPath();
+        ctx.moveTo(x + dx, y + h);
+        ctx.lineTo(x + dx + h, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     // Also draw inserted <del> elements (removed diff blocks)
     const removedEls = content.parentElement?.querySelectorAll('del.diff-removed');
     if (removedEls) {
       ctx.fillStyle = 'rgba(248, 81, 73, 0.5)';
       for (const el of removedEls) {
         const rect = el.getBoundingClientRect();
-        const top = rect.top + scrollTop - toolbarHeight - contentTop;
+        const top = rect.top - contentRect.top;
         const y = top * scale;
         const h = Math.max(2, rect.height * scale);
         ctx.fillRect(2, y, mapWidth * 0.55, h);
@@ -142,11 +171,11 @@ export function Minimap({ contentRef }: MinimapProps) {
     }
 
     // Draw viewport indicator
-    const vpTop = Math.max(0, (scrollTop - contentTop) * scale);
+    const vpTop = Math.max(0, (scrollTop - contentOffset) * scale);
     const vpHeight = viewportHeight * scale;
     ctx.fillStyle = 'rgba(128, 128, 128, 0.12)';
     ctx.fillRect(0, vpTop, mapWidth, vpHeight);
-  }, [contentRef]);
+  }, [contentRef, scrollRef]);
 
   // Repaint on scroll, resize, and content changes
   useEffect(() => {
@@ -155,7 +184,8 @@ export function Minimap({ contentRef }: MinimapProps) {
       rafRef.current = requestAnimationFrame(paint);
     }
 
-    window.addEventListener('scroll', onScrollOrResize, { passive: true });
+    const scroller = scrollRef.current;
+    scroller?.addEventListener('scroll', onScrollOrResize, { passive: true });
     window.addEventListener('resize', onScrollOrResize);
 
     // Observe content changes (e.g., diff overlay applied)
@@ -168,18 +198,19 @@ export function Minimap({ contentRef }: MinimapProps) {
     requestAnimationFrame(paint);
 
     return () => {
-      window.removeEventListener('scroll', onScrollOrResize);
+      scroller?.removeEventListener('scroll', onScrollOrResize);
       window.removeEventListener('resize', onScrollOrResize);
       observer.disconnect();
       cancelAnimationFrame(rafRef.current);
     };
-  }, [paint, contentRef]);
+  }, [paint, contentRef, scrollRef]);
 
   // Click/drag to scroll
   const scrollToY = useCallback((clientY: number) => {
     const wrapper = containerRef.current;
     const content = contentRef.current;
-    if (!wrapper || !content) return;
+    const scroller = scrollRef.current;
+    if (!wrapper || !content || !scroller) return;
 
     const rect = wrapper.getBoundingClientRect();
     const docHeight = content.scrollHeight;
@@ -187,9 +218,12 @@ export function Minimap({ contentRef }: MinimapProps) {
     const scale = Math.min(maxScale, rect.height / docHeight);
     const mapContentHeight = docHeight * scale;
     const ratio = (clientY - rect.top) / mapContentHeight;
-    const targetScroll = ratio * docHeight - window.innerHeight / 2;
-    window.scrollTo({ top: Math.max(0, targetScroll), behavior: 'auto' });
-  }, [contentRef]);
+    const contentRect = content.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    const contentOffset = contentRect.top - scrollerRect.top + scroller.scrollTop;
+    const targetScroll = contentOffset + ratio * docHeight - scroller.clientHeight / 2;
+    scroller.scrollTo({ top: Math.max(0, targetScroll), behavior: 'auto' });
+  }, [contentRef, scrollRef]);
 
   useEffect(() => {
     const wrapper = containerRef.current;

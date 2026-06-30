@@ -26,6 +26,17 @@ function formatRelativeTime(timestamp: string): string {
   return `${days}d ago`;
 }
 
+// Files under this directory are published to GitHub Pages and can be linked
+// to from the toolbar filename.
+const PAGES_PREFIX = '/Users/dtsung/figma/dtsung/';
+const PAGES_BASE_URL = 'https://refactored-dollop-2qp6ylv.pages.github.io/';
+
+function publishedUrlForFile(filePath: string): string | null {
+  if (!filePath.startsWith(PAGES_PREFIX)) return null;
+  const rel = filePath.slice(PAGES_PREFIX.length).replace(/\.md$/, '.html');
+  return PAGES_BASE_URL + rel;
+}
+
 export function Toolbar({
   filePath,
   claudeConnected,
@@ -38,6 +49,7 @@ export function Toolbar({
   onPinVersion,
 }: ToolbarProps) {
   const fileName = filePath.split('/').pop() || filePath;
+  const publishedUrl = publishedUrlForFile(filePath);
   const [, setTick] = useState(0);
 
   // Update relative time every 10s
@@ -52,9 +64,21 @@ export function Toolbar({
       <div className="toolbar-left">
         <span className="toolbar-logo">md-annotate</span>
         <span className="toolbar-separator">/</span>
-        <span className="toolbar-filename" title={filePath}>
-          {fileName}
-        </span>
+        {publishedUrl ? (
+          <a
+            className="toolbar-filename toolbar-filename-link"
+            href={publishedUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`${filePath}\nOpen published page: ${publishedUrl}`}
+          >
+            {fileName}
+          </a>
+        ) : (
+          <span className="toolbar-filename" title={filePath}>
+            {fileName}
+          </span>
+        )}
         {lastEdited && (
           <>
             <span className="toolbar-separator">·</span>

@@ -1,20 +1,28 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { Annotation } from '@shared/types.js';
 import { CommentThread } from './CommentThread.js';
+import { FocusReview } from './FocusReview.js';
+import { useViewedThreads } from '../hooks/useViewedThreads.js';
 
 const RECENTLY_RESOLVED_MS = 5000;
 
+type SidebarTab = 'all' | 'review';
+
 interface CommentSidebarProps {
+  filePath: string;
   annotations: Annotation[];
   activeAnnotationId: string | null;
   onSetActive: (id: string | null) => void;
-  onReply: (annotationId: string, text: string) => void;
+  onReply: (annotationId: string, text: string, kind: import('@shared/types.js').CommentKind) => void;
   onResolve: (annotationId: string) => void;
   onReopen: (annotationId: string) => void;
   onDelete: (annotationId: string) => void;
+  replyDrafts: Record<string, string>;
+  onReplyDraftChange: (annotationId: string, text: string) => void;
 }
 
 export function CommentSidebar({
+  filePath,
   annotations,
   activeAnnotationId,
   onSetActive,
@@ -22,7 +30,23 @@ export function CommentSidebar({
   onResolve,
   onReopen,
   onDelete,
+  replyDrafts,
+  onReplyDraftChange,
 }: CommentSidebarProps) {
+  const [tab, setTab] = useState<SidebarTab>('all');
+  const { isUnread, markViewed } = useViewedThreads(filePath);
+
+  // Mark a thread viewed whenever the user opens it (in either tab). This is
+  // what drops it out of the unread review queue.
+  useEffect(() => {
+    if (!activeAnnotationId) return;
+    const active = annotations.find((a) => a.id === activeAnnotationId);
+    if (active) markViewed(active);
+  }, [activeAnnotationId, annotations, markViewed]);
+
+  const unreadCount = annotations.filter(
+    (a) => a.status !== 'deleted' && isUnread(a)
+  ).length;
   // Track recently resolved annotations so they stay expanded briefly
   const [recentlyResolved, setRecentlyResolved] = useState<Set<string>>(new Set());
   const prevStatusRef = useRef<Map<string, string>>(new Map());
@@ -51,6 +75,24 @@ export function CommentSidebar({
     };
   }, [annotations]);
 
+  const handleManualCollapse = useCallback(
+    (id: string) => {
+      const timer = timersRef.current.get(id);
+      if (timer) {
+        clearTimeout(timer);
+        timersRef.current.delete(id);
+      }
+      setRecentlyResolved((s) => {
+        if (!s.has(id)) return s;
+        const next = new Set(s);
+        next.delete(id);
+        return next;
+      });
+      if (activeAnnotationId === id) onSetActive(null);
+    },
+    [activeAnnotationId, onSetActive]
+  );
+
   // Sort by position in document
   const sorted = [...annotations].sort(
     (a, b) => a.startOffset - b.startOffset
@@ -65,16 +107,46 @@ export function CommentSidebar({
   return (
     <aside className="comment-sidebar">
       <div className="sidebar-header">
-        <h2>
-          Comments{' '}
-          <span className="comment-count">
-            {openAnnotations.length} open
-            {resolvedAnnotations.length > 0 &&
-              `, ${resolvedAnnotations.length} resolved`}
-          </span>
-        </h2>
+        <div className="sidebar-tabs" role="tablist">
+          <button
+            role="tab"
+            aria-selected={tab === 'all'}
+            className={`sidebar-tab ${tab === 'all' ? 'active' : ''}`}
+            onClick={() => setTab('all')}
+          >
+            Comments{' '}
+            <span className="comment-count">
+              {openAnnotations.length} open
+              {resolvedAnnotations.length > 0 &&
+                `, ${resolvedAnnotations.length} resolved`}
+            </span>
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === 'review'}
+            className={`sidebar-tab ${tab === 'review' ? 'active' : ''}`}
+            onClick={() => setTab('review')}
+          >
+            Review
+            {unreadCount > 0 && <span className="unread-badge">{unreadCount}</span>}
+          </button>
+        </div>
       </div>
 
+      {tab === 'review' ? (
+        <FocusReview
+          annotations={annotations}
+          isUnread={isUnread}
+          markViewed={markViewed}
+          onSetActive={onSetActive}
+          onReply={onReply}
+          onResolve={onResolve}
+          onReopen={onReopen}
+          onDelete={onDelete}
+          replyDrafts={replyDrafts}
+          onReplyDraftChange={onReplyDraftChange}
+        />
+      ) : (
       <div className="sidebar-threads">
         {openAnnotations.map((annotation) => (
           <CommentThread
@@ -82,10 +154,12 @@ export function CommentSidebar({
             annotation={annotation}
             isActive={activeAnnotationId === annotation.id}
             onActivate={() => onSetActive(activeAnnotationId === annotation.id ? null : annotation.id)}
-            onReply={(text) => onReply(annotation.id, text)}
+            onReply={(text, kind) => onReply(annotation.id, text, kind)}
             onResolve={() => onResolve(annotation.id)}
             onReopen={() => onReopen(annotation.id)}
             onDelete={() => onDelete(annotation.id)}
+            replyDraft={replyDrafts[annotation.id] ?? ''}
+            onReplyDraftChange={(text) => onReplyDraftChange(annotation.id, text)}
           />
         ))}
 
@@ -99,6 +173,9 @@ export function CommentSidebar({
             onResolve={onResolve}
             onReopen={onReopen}
             onDelete={onDelete}
+            onManualCollapse={handleManualCollapse}
+            replyDrafts={replyDrafts}
+            onReplyDraftChange={onReplyDraftChange}
           />
         )}
 
@@ -111,6 +188,7 @@ export function CommentSidebar({
           </div>
         )}
       </div>
+      )}
     </aside>
   );
 }
@@ -124,15 +202,21 @@ function ResolvedSection({
   onResolve,
   onReopen,
   onDelete,
+  onManualCollapse,
+  replyDrafts,
+  onReplyDraftChange,
 }: {
   resolvedAnnotations: Annotation[];
   activeAnnotationId: string | null;
   recentlyResolved: Set<string>;
   onSetActive: (id: string | null) => void;
-  onReply: (annotationId: string, text: string) => void;
+  onReply: (annotationId: string, text: string, kind: import('@shared/types.js').CommentKind) => void;
   onResolve: (annotationId: string) => void;
   onReopen: (annotationId: string) => void;
   onDelete: (annotationId: string) => void;
+  onManualCollapse: (annotationId: string) => void;
+  replyDrafts: Record<string, string>;
+  onReplyDraftChange: (annotationId: string, text: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -181,10 +265,13 @@ function ResolvedSection({
           isActive={activeAnnotationId === annotation.id}
           forceExpanded={recentlyResolved.has(annotation.id)}
           onActivate={() => onSetActive(activeAnnotationId === annotation.id ? null : annotation.id)}
-          onReply={(text) => onReply(annotation.id, text)}
+          onReply={(text, kind) => onReply(annotation.id, text, kind)}
           onResolve={() => onResolve(annotation.id)}
           onReopen={() => onReopen(annotation.id)}
           onDelete={() => onDelete(annotation.id)}
+          onManualCollapse={() => onManualCollapse(annotation.id)}
+          replyDraft={replyDrafts[annotation.id] ?? ''}
+          onReplyDraftChange={(text) => onReplyDraftChange(annotation.id, text)}
         />
       ))}
     </>

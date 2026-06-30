@@ -15,16 +15,36 @@ export interface Annotation {
   status: 'open' | 'resolved' | 'deleted';
   /** True when the selected text can no longer be found in the file */
   stale: boolean;
+  /**
+   * Set when the annotation targets an embedded HTML widget rather than a text
+   * selection. Holds a concise label (e.g. the widget's `id` or class) so the
+   * UI and CLI can show something meaningful instead of dumping the raw HTML.
+   */
+  embedLabel?: string;
   sentToClaude: boolean;
   working: boolean;
+  /** Timestamp when Claude last read this annotation's full state (via
+   *  `next`, `start`, or after a successful `reply`). Used to block
+   *  reply/resolve if a user comment was added after that point — i.e.
+   *  Claude would otherwise be answering stale context. */
+  claudeReadAt?: string;
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * 'comment' (default) lets Claude decide whether to edit the doc.
+ * 'question' tells Claude to answer in-thread and NOT modify the doc.
+ * Only meaningful on user-authored comments; Claude replies are always treated as 'comment'.
+ */
+export type CommentKind = 'comment' | 'question';
 
 export interface Comment {
   id: string;
   author: string; // "user" or "claude"
   text: string;
+  /** Optional for backwards-compat — missing means 'comment'. */
+  kind?: CommentKind;
   createdAt: string;
 }
 
@@ -37,11 +57,15 @@ export interface CreateAnnotationRequest {
   contextBefore: string;
   contextAfter: string;
   commentText: string;
+  kind?: CommentKind;
+  /** Concise widget label when the annotation targets an embedded HTML widget. */
+  embedLabel?: string;
 }
 
 export interface AddCommentRequest {
   author: string;
   text: string;
+  kind?: CommentKind;
 }
 
 export interface UpdateAnnotationRequest {

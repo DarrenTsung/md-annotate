@@ -5,6 +5,7 @@ import type {
   AnnotationFile,
   Annotation,
   Comment,
+  CommentKind,
   CreateAnnotationRequest,
 } from '../../shared/types.js';
 
@@ -93,11 +94,13 @@ export class AnnotationService {
           id: uuidv4(),
           author: 'user',
           text: req.commentText,
+          kind: req.kind ?? 'comment',
           createdAt: now,
         },
       ],
       status: 'open',
       stale: false,
+      ...(req.embedLabel ? { embedLabel: req.embedLabel } : {}),
       sentToClaude: false,
       working: false,
       createdAt: now,
@@ -137,7 +140,12 @@ export class AnnotationService {
     return true;
   }
 
-  addComment(annotationId: string, author: string, text: string): Comment | null {
+  addComment(
+    annotationId: string,
+    author: string,
+    text: string,
+    kind: CommentKind = 'comment'
+  ): Comment | null {
     const annotation = this.data.annotations.find((a) => a.id === annotationId);
     if (!annotation) return null;
 
@@ -145,6 +153,8 @@ export class AnnotationService {
       id: uuidv4(),
       author,
       text,
+      // Only persist kind for user comments; Claude replies are always plain comments.
+      ...(author === 'user' ? { kind } : {}),
       createdAt: new Date().toISOString(),
     };
 
@@ -152,6 +162,32 @@ export class AnnotationService {
     annotation.updatedAt = new Date().toISOString();
     this.persist();
     return comment;
+  }
+
+  /** Record that Claude has just read this annotation's full state. */
+  markRead(id: string): void {
+    const annotation = this.data.annotations.find((a) => a.id === id);
+    if (!annotation) return;
+    annotation.claudeReadAt = new Date().toISOString();
+    this.persist();
+  }
+
+  /** True if any user comment was added after Claude last read the annotation. */
+  hasUnreadUserComments(id: string): boolean {
+    return this.getUnreadUserComments(id).length > 0;
+  }
+
+  /** User comments added after Claude last read the annotation, oldest first. */
+  getUnreadUserComments(id: string) {
+    const annotation = this.data.annotations.find((a) => a.id === id);
+    if (!annotation) return [];
+    // Backwards-compat: if Claude has never read it, fall back to createdAt
+    // so we don't block on annotations created before this field existed.
+    const cursor = annotation.claudeReadAt ?? annotation.createdAt;
+    const cursorMs = new Date(cursor).getTime();
+    return annotation.comments.filter(
+      (c) => c.author === 'user' && new Date(c.createdAt).getTime() > cursorMs
+    );
   }
 
   markSentToClaude(ids: string[]): void {

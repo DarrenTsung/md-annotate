@@ -100,9 +100,16 @@ export class FileManager {
       sidecarWriteTimeout: null,
     };
 
-    // Watch the markdown file
+    // Watch the markdown file.
+    //
+    // Use polling rather than native FSEvents: macOS single-file FSEvents
+    // watches are unreliable for editor saves (atomic rename replaces the
+    // watched inode, and many saves are simply missed). Polling stats the path
+    // directly every interval, so every external edit is caught within ~0.5s.
     const mdWatcher = watch(filePath, {
       persistent: true,
+      usePolling: true,
+      interval: 400,
       awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
     });
 

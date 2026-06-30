@@ -63,7 +63,7 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
   } = useAnnotations({ filePath, session });
 
   const handleCreateAnnotation = useCallback(
-    async (offset: SourceOffset, comment: string, kind: CommentKind) => {
+    async (offset: SourceOffset, comment: string, kind: CommentKind, opts?: { embedLabel?: string }) => {
       const annotation = await createAnnotation({
         selectedText: offset.selectedText,
         startOffset: offset.startOffset,
@@ -72,6 +72,7 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
         contextAfter: offset.contextAfter,
         commentText: comment,
         kind,
+        embedLabel: opts?.embedLabel,
       });
       setActiveAnnotationId(annotation.id);
     },
@@ -188,6 +189,7 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
           activeVersionId={activeVersionId}
         />
         <CommentSidebar
+          filePath={filePath}
           annotations={annotations}
           activeAnnotationId={activeAnnotationId}
           onSetActive={setActiveAnnotationId}

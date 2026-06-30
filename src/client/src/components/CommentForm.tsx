@@ -1,10 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
+import type { CommentKind } from '@shared/types.js';
 
 interface CommentFormProps {
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string, kind: CommentKind) => void;
   onCancel?: () => void;
   placeholder?: string;
   autoFocus?: boolean;
+  // Optional controlled draft — persists across remounts when the parent
+  // owns the state (e.g. when an LLM update reorders or restages the thread).
+  value?: string;
+  onChange?: (text: string) => void;
 }
 
 export function CommentForm({
@@ -12,8 +17,15 @@ export function CommentForm({
   onCancel,
   placeholder = 'Reply...',
   autoFocus = false,
+  value,
+  onChange,
 }: CommentFormProps) {
-  const [text, setText] = useState('');
+  const [internalText, setInternalText] = useState('');
+  const text = value ?? internalText;
+  const setText = (next: string) => {
+    if (onChange) onChange(next);
+    else setInternalText(next);
+  };
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -23,26 +35,32 @@ export function CommentForm({
       if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) {
         return;
       }
-      textareaRef.current?.focus();
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      // Place cursor at end so a restored draft is ready to keep typing into.
+      const len = ta.value.length;
+      ta.setSelectionRange(len, len);
     }
   }, [autoFocus]);
+
+  function submit(kind: CommentKind) {
+    if (text.trim()) {
+      onSubmit(text.trim(), kind);
+      setText('');
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (text.trim()) {
-      onSubmit(text.trim());
-      setText('');
-    }
+    submit('comment');
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      if (text.trim()) {
-        onSubmit(text.trim());
-        setText('');
-      }
+      submit('comment');
     }
     if (e.key === 'Escape' && onCancel) {
       onCancel();
@@ -67,11 +85,20 @@ export function CommentForm({
           </button>
         )}
         <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={!text.trim()}
+          onClick={() => submit('question')}
+          title="Ask Claude to clarify without modifying the document"
+        >
+          Question
+        </button>
+        <button
           type="submit"
           className="btn btn-primary btn-sm"
           disabled={!text.trim()}
         >
-          Reply
+          Comment
         </button>
       </div>
     </form>

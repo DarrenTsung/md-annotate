@@ -147,13 +147,123 @@ function getMd(): MarkdownIt {
       }
       return defaultLinkOpen(tokens, idx, options, env, self);
     };
+
+    // Embedded HTML widgets: a doc may carry self-contained interactive HTML
+    // (shared <style> + mount <div>s + shared <script>). We render each mount
+    // block into a sandboxed iframe (so its CSS/JS is isolated and scripts run)
+    // and suppress the bare <style>/<script> asset blocks from the page flow —
+    // they're bundled into every widget's iframe instead. See classifyEmbeds().
+    const defaultHtmlBlock = mdInstance.renderer.rules.html_block ||
+      function (tokens, idx) {
+        return tokens[idx].content;
+      };
+
+    mdInstance.renderer.rules.html_block = function (tokens, idx, options, env, self) {
+      const token = tokens[idx];
+      const kind = (token.meta as { embedKind?: string } | undefined)?.embedKind;
+      if (kind === 'asset') return '';
+      if (kind === 'widget') {
+        const e = env as EmbedEnv;
+        const start = token.attrGet('data-source-start') || '';
+        const end = token.attrGet('data-source-end') || '';
+        const srcdoc = buildEmbedSrcdoc(e.embedStyles || [], e.embedScripts || [], token.content);
+        const b64 = Buffer.from(srcdoc, 'utf-8').toString('base64');
+        return (
+          `<div class="html-embed" data-embed-srcdoc="${b64}"` +
+          ` data-source-start="${start}" data-source-end="${end}"></div>\n`
+        );
+      }
+      return defaultHtmlBlock(tokens, idx, options, env, self);
+    };
   }
   return mdInstance;
 }
 
+interface EmbedEnv {
+  embedStyles?: string[];
+  embedScripts?: string[];
+}
+
+/** Block-level tags treated as embeddable interactive widgets (vs. inline HTML). */
+const WIDGET_TAG_RE = /^<(div|section|figure|svg|canvas|form|aside|main|article)[\s>]/i;
+
+/**
+ * Walk the token stream and classify raw HTML blocks:
+ *  - `<style>` / `<script>` blocks become shared `asset`s, collected on `env`
+ *    and bundled into each widget iframe (and suppressed from the page flow).
+ *  - Container blocks (div/section/…) in a doc that has any embedded
+ *    style/script become `widget`s rendered as isolated iframes.
+ *  - Everything else falls through to the default passthrough rendering.
+ */
+function classifyEmbeds(tokens: Token[], env: EmbedEnv): void {
+  const styles: string[] = [];
+  const scripts: string[] = [];
+  const candidates: Token[] = [];
+
+  function walk(list: Token[]) {
+    for (const token of list) {
+      if (token.type === 'html_block') {
+        const c = token.content.trim();
+        if (/^<style[\s>]/i.test(c)) {
+          styles.push(token.content);
+          token.meta = { ...(token.meta as object), embedKind: 'asset' };
+        } else if (/^<script[\s>]/i.test(c)) {
+          scripts.push(token.content);
+          token.meta = { ...(token.meta as object), embedKind: 'asset' };
+        } else if (WIDGET_TAG_RE.test(c)) {
+          candidates.push(token);
+        }
+      }
+      if (token.children) walk(token.children);
+    }
+  }
+  walk(tokens);
+
+  env.embedStyles = styles;
+  env.embedScripts = scripts;
+
+  // Only treat container blocks as iframe widgets when the document actually
+  // carries embedded behavior — otherwise plain HTML stays inline (and
+  // annotatable) as before.
+  const rich = styles.length > 0 || scripts.length > 0;
+  for (const token of candidates) {
+    token.meta = { ...(token.meta as object), embedKind: rich ? 'widget' : 'inline' };
+  }
+}
+
+/** Build a self-contained HTML document for a widget iframe's `srcdoc`. */
+function buildEmbedSrcdoc(styles: string[], scripts: string[], body: string): string {
+  const base =
+    '<style>html,body{margin:0;padding:0;background:transparent;color:#1f2328;' +
+    'font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}' +
+    '*{box-sizing:border-box}' +
+    // Collapse the widget's own outer vertical margins so the iframe hugs its
+    // visible content (the .html-embed wrapper already spaces it from prose).
+    'body>*:first-child{margin-top:0}body>*:last-child{margin-bottom:0}</style>';
+  // Report content height to the parent so the iframe can size to fit.
+  const resize =
+    '<script>(function(){function s(){try{parent.postMessage({__htmlEmbed:1,' +
+    'name:window.name,height:document.documentElement.scrollHeight},"*")}catch(e){}}' +
+    'if(window.ResizeObserver){new ResizeObserver(s).observe(document.documentElement)}' +
+    'window.addEventListener("load",s);[60,300,1000].forEach(function(t){setTimeout(s,t)})})();</script>';
+  return (
+    '<!doctype html><html><head><meta charset="utf-8">' +
+    base +
+    styles.join('\n') +
+    '</head><body>' +
+    body +
+    scripts.join('\n') +
+    resize +
+    '</body></html>'
+  );
+}
+
 export function renderMarkdown(source: string): string {
   const md = getMd();
-  let html = md.render(source);
+  const env: EmbedEnv = {};
+  const tokens = md.parse(source, env);
+  classifyEmbeds(tokens, env);
+  let html = md.renderer.render(tokens, md.options, env);
   // Replace <!-- @actions: ... --> comments with action buttons.
   // With html: true, markdown-it passes HTML comments through verbatim.
   html = html.replace(

@@ -156,7 +156,8 @@ async function cliNext(): Promise<void> {
       selectedText: string;
       startOffset: number;
       endOffset: number;
-      comments: Array<{ author: string; text: string; createdAt: string }>;
+      embedLabel?: string;
+      comments: Array<{ author: string; text: string; kind?: 'comment' | 'question'; createdAt: string }>;
       createdAt: string;
     } | null;
     remaining: number;
@@ -169,39 +170,68 @@ async function cliNext(): Promise<void> {
 
   const a = data.annotation;
   const sep = '─'.repeat(60);
+  const lastUserComment = [...a.comments].reverse().find((c) => c.author === 'user');
+  const isQuestion = lastUserComment?.kind === 'question';
 
   console.log(sep);
   console.log(`File: ${data.filePath}`);
   console.log(`ID: ${a.id}`);
-
-  // Show context with XML tags around the exact selected text
-  const content = fs.readFileSync(data.filePath, 'utf-8');
-  const lines = content.split('\n');
-  const beforeContent = content.slice(0, a.startOffset);
-  const startLine = beforeContent.split('\n').length - 1;
-  const selectedLines = a.selectedText.split('\n').length;
-  const endLine = startLine + selectedLines - 1;
-  const ctxStart = Math.max(0, startLine - 3);
-  const ctxEnd = Math.min(lines.length - 1, endLine + 3);
-
-  // Build context with <selected> tags injected at exact offsets
-  const ctxLineStart = content.split('\n').slice(0, ctxStart).join('\n').length + (ctxStart > 0 ? 1 : 0);
-  const selStart = a.startOffset - ctxLineStart;
-  const selEnd = a.endOffset - ctxLineStart;
-  const ctxText = lines.slice(ctxStart, ctxEnd + 1).join('\n');
-  const tagged = ctxText.slice(0, selStart) + '<selected>' + ctxText.slice(selStart, selEnd) + '</selected>' + ctxText.slice(selEnd);
-  console.log(sep);
-  console.log(`Context (lines ${ctxStart + 1}-${ctxEnd + 1}):`);
-  for (const line of tagged.split('\n')) {
-    console.log(`    ${line}`);
+  if (isQuestion) {
+    console.log(`Kind: QUESTION — respond in the comment thread only. Do NOT edit the document.`);
   }
-  console.log(sep);
-  console.log(`Selected text: ${a.selectedText}`);
-  console.log(sep);
+
+  const content = fs.readFileSync(data.filePath, 'utf-8');
+  const startLine = content.slice(0, a.startOffset).split('\n').length;
+
+  if (a.embedLabel) {
+    // Embedded HTML widget: the user is commenting on the whole widget, not a
+    // text selection. Don't dump the raw HTML — just point Claude at it.
+    console.log(sep);
+    console.log(`Target: embedded HTML widget "${a.embedLabel}" (line ${startLine}).`);
+    console.log(`  Open ${data.filePath} around line ${startLine} to read/edit the widget's markup.`);
+    console.log(sep);
+  } else {
+    // Show context with XML tags around the exact selected text
+    const lines = content.split('\n');
+    const selectedLines = a.selectedText.split('\n').length;
+    const endLine = startLine - 1 + selectedLines - 1;
+    const ctxStart = Math.max(0, startLine - 1 - 3);
+    const ctxEnd = Math.min(lines.length - 1, endLine + 3);
+
+    // Build context with <selected> tags injected at exact offsets
+    const ctxLineStart = content.split('\n').slice(0, ctxStart).join('\n').length + (ctxStart > 0 ? 1 : 0);
+    const selStart = a.startOffset - ctxLineStart;
+    const selEnd = a.endOffset - ctxLineStart;
+    const ctxText = lines.slice(ctxStart, ctxEnd + 1).join('\n');
+    const tagged = ctxText.slice(0, selStart) + '<selected>' + ctxText.slice(selStart, selEnd) + '</selected>' + ctxText.slice(selEnd);
+    console.log(sep);
+    console.log(`Context (lines ${ctxStart + 1}-${ctxEnd + 1}):`);
+    for (const line of tagged.split('\n')) {
+      console.log(`    ${line}`);
+    }
+    console.log(sep);
+    console.log(`Selected text: ${a.selectedText}`);
+    console.log(sep);
+  }
   console.log(`Comments:`);
   for (const c of a.comments) {
-    console.log(`  ${c.author}: ${c.text}`);
+    const tag = c.author === 'user' && c.kind === 'question' ? ' [question]' : '';
+    console.log(`  ${c.author}${tag}: ${c.text}`);
   }
+  console.log(sep);
+  // Instruct the LLM to keep its full response inside `md-annotate reply` so
+  // the user (who is reading in the md-annotate UI, not the terminal) sees it.
+  // Terminal prose here is double-writing — keep it minimal.
+  console.log(`Instructions:`);
+  console.log(`  - Put your full response inside \`md-annotate reply ${a.id} "..."\`.`);
+  console.log(`  - The user is reading in md-annotate, not this terminal. Do NOT repeat or summarize`);
+  console.log(`    your reply as prose here — just run the reply command. Brief tool-prep notes are fine.`);
+  if (isQuestion) {
+    console.log(`  - This is a [question]. Reply only; do NOT edit the source document.`);
+  } else {
+    console.log(`  - If you edit the document to address the comment, mention what you changed in the reply.`);
+  }
+  console.log(`  - Use --resolve when the comment is fully addressed: \`md-annotate reply --resolve ${a.id} "..."\`.`);
   console.log(sep);
   console.log(`Remaining: ${data.remaining}`);
 }
@@ -229,7 +259,8 @@ async function cliStatus(): Promise<void> {
       selectedText: string;
       startOffset: number;
       endOffset: number;
-      comments: Array<{ author: string; text: string; createdAt: string }>;
+      embedLabel?: string;
+      comments: Array<{ author: string; text: string; kind?: 'comment' | 'question'; createdAt: string }>;
       working: boolean;
       createdAt: string;
     }>;
@@ -244,12 +275,15 @@ async function cliStatus(): Promise<void> {
   console.log(`${data.annotations.length} pending annotation(s):\n`);
   for (const a of data.annotations) {
     const lastUserComment = [...a.comments].reverse().find((c) => c.author === 'user');
-    const text = a.selectedText.length > 40
+    const text = a.embedLabel
+      ? `🧩 widget: ${a.embedLabel}`
+      : a.selectedText.length > 40
       ? a.selectedText.slice(0, 37) + '...'
       : a.selectedText;
     const ago = formatRelativeTime(lastUserComment?.createdAt || a.createdAt);
     const working = a.working ? ' [working]' : '';
-    console.log(`  ${a.id}  "${text}"${working} (${ago})`);
+    const kindTag = lastUserComment?.kind === 'question' ? ' [question]' : '';
+    console.log(`  ${a.id}  "${text}"${kindTag}${working} (${ago})`);
   }
 }
 
@@ -285,15 +319,21 @@ async function cliOpen(): Promise<void> {
   const session = process.env.ITERM_SESSION_ID || '';
 
   for (const filePath of filePaths) {
+    let res: Response;
     try {
       // Pre-initialize the file state and link the session immediately,
       // so CLI commands (next, reply, etc.) work right away without
       // waiting for the browser's WebSocket to connect.
       const qs = new URLSearchParams({ filePath });
       if (session) qs.set('session', session);
-      await fetch(`http://localhost:${PORT}/api/file?${qs.toString()}`);
+      res = await fetch(`http://localhost:${PORT}/api/file?${qs.toString()}`);
     } catch {
       console.error(`Error: daemon is not running on port ${PORT}. Start it with: md-annotate`);
+      process.exit(1);
+    }
+    if (!res.ok) {
+      // Some other service is on this port, or the daemon is unhealthy.
+      console.error(`Error: daemon is not running on port ${PORT} (got HTTP ${res.status}). Start it with: md-annotate`);
       process.exit(1);
     }
 
@@ -402,7 +442,10 @@ if (fileArg) {
 // Start the Vite dev server (with API + WS embedded via plugin)
 const server = await createServer({
   configFile: path.resolve(import.meta.dirname, '../vite.config.ts'),
-  server: { port },
+  // strictPort: refuse to start if `port` is already in use, instead of silently
+  // falling back to a random port (which would make the CLI subcommands talk to
+  // the wrong server).
+  server: { port, strictPort: true },
 });
 await server.listen();
 

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
 import mermaid from 'mermaid';
 import morphdom from 'morphdom';
 import type { Annotation, CommentKind, DiffHunk } from '@shared/types.js';
@@ -40,8 +40,8 @@ function assignMorphKeys(root: HTMLElement): void {
  * Find the block element closest to the viewport top — used as the scroll
  * anchor reference point before DOM updates.
  */
-function findAnchorElement(container: HTMLElement): HTMLElement | null {
-  if (window.scrollY < 10) return null;
+function findAnchorElement(container: HTMLElement, scroller: HTMLElement | null): HTMLElement | null {
+  if ((scroller?.scrollTop ?? 0) < 10) return null;
 
   const blocks = container.querySelectorAll('[data-source-start]');
   let best: HTMLElement | null = null;
@@ -57,12 +57,47 @@ function findAnchorElement(container: HTMLElement): HTMLElement | null {
   return best;
 }
 
+/**
+ * Find the embedded-widget element an annotation is anchored to (annotations on
+ * widgets have no `<mark>`; they're keyed to the embed's source-offset range).
+ */
+function findEmbedForAnnotation(
+  container: HTMLElement | null,
+  annotations: Annotation[],
+  annotationId: string
+): HTMLElement | null {
+  if (!container) return null;
+  const ann = annotations.find((a) => a.id === annotationId);
+  if (!ann) return null;
+  const embeds = Array.from(container.querySelectorAll('.html-embed[data-source-start]')) as HTMLElement[];
+  for (const embed of embeds) {
+    const start = parseInt(embed.getAttribute('data-source-start') || '0', 10);
+    const end = parseInt(embed.getAttribute('data-source-end') || '0', 10);
+    // Range overlap (tolerant of small re-anchoring drift), rather than strict
+    // containment, so the embed still matches if its block offset shifted a bit.
+    if (ann.startOffset < end && ann.endOffset > start) return embed;
+  }
+  return null;
+}
+
+/**
+ * Derive a concise label for an embedded widget from its source HTML — its
+ * `id`, else its first class, else a generic fallback.
+ */
+function widgetLabel(blockHtml: string): string {
+  const id = blockHtml.match(/\bid=["']([^"']+)["']/);
+  if (id) return id[1];
+  const cls = blockHtml.match(/\bclass=["']([^"'\s]+)/);
+  if (cls) return cls[1];
+  return 'embedded widget';
+}
+
 interface MarkdownViewerProps {
   renderedHtml: string;
   rawMarkdown: string;
   annotations: Annotation[];
   activeAnnotationId: string | null;
-  onCreateAnnotation: (offset: SourceOffset, comment: string, kind: CommentKind) => void;
+  onCreateAnnotation: (offset: SourceOffset, comment: string, kind: CommentKind, opts?: { embedLabel?: string }) => void;
   onDeleteText: (offset: SourceOffset) => void;
   onHighlightClick: (annotationId: string) => void;
   onActionButtonClick: (action: string, sourceStart: number, sourceEnd: number, selectedText: string) => void;
@@ -87,7 +122,12 @@ export function MarkdownViewer({
   activeVersionId,
 }: MarkdownViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // The scrollable column wrapping the article — this scrolls, not the window.
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const { selection, clearSelection } = useTextSelection(containerRef, rawMarkdown);
+  // Popover state for commenting on an embedded HTML widget (which has no
+  // selectable text of its own — the comment anchors to its source block).
+  const [embedSel, setEmbedSel] = useState<{ offset: SourceOffset; rect: DOMRect; embedLabel: string } | null>(null);
 
   // --- Content freeze during comment composition ---
   // While the selection popover is open, freeze the displayed content so
@@ -122,7 +162,7 @@ export function MarkdownViewer({
     }
 
     // Capture scroll anchor before morphing
-    const anchorEl = findAnchorElement(container);
+    const anchorEl = findAnchorElement(container, scrollerRef.current);
     const anchorOffset = anchorEl?.getBoundingClientRect().top ?? 0;
 
     const target = document.createElement('article');
@@ -138,6 +178,15 @@ export function MarkdownViewer({
         return undefined;
       },
       onBeforeElUpdated(from, to) {
+        // Preserve a mounted embed iframe when its content hasn't changed —
+        // letting morphdom reconcile it would tear out the live iframe (and
+        // reset any interactive widget state inside).
+        if (
+          from.classList?.contains('html-embed') &&
+          from.getAttribute('data-embed-srcdoc') === to.getAttribute('data-embed-srcdoc')
+        ) {
+          return false;
+        }
         if (from.isEqualNode(to)) return false;
         return true;
       },
@@ -160,7 +209,7 @@ export function MarkdownViewer({
     const newOffset = adj.el.getBoundingClientRect().top;
     const adjustment = newOffset - adj.offset;
     if (Math.abs(adjustment) > 1) {
-      window.scrollBy(0, adjustment);
+      scrollerRef.current?.scrollBy(0, adjustment);
     }
   }, [displayHtml]);
 
@@ -170,9 +219,10 @@ export function MarkdownViewer({
     const container = containerRef.current;
     if (!container) return;
 
-    const scrollY = window.scrollY;
+    const scroller = scrollerRef.current;
+    const scrollY = scroller?.scrollTop ?? 0;
     const cleanup = applyHighlights(container, annotations, displayMarkdown);
-    window.scrollTo(0, scrollY);
+    if (scroller) scroller.scrollTop = scrollY;
     return cleanup;
   }, [annotations, displayHtml, displayMarkdown]);
 
@@ -184,11 +234,15 @@ export function MarkdownViewer({
 
     // Clear any previous active
     container.querySelectorAll('mark.active').forEach((m) => m.classList.remove('active'));
+    container.querySelectorAll('.html-embed.active').forEach((e) => e.classList.remove('active'));
 
     if (activeAnnotationId) {
       container
         .querySelectorAll(`mark[data-annotation-id="${activeAnnotationId}"]`)
         .forEach((m) => m.classList.add('active'));
+      // Embedded widgets have no <mark>; highlight the embed block instead.
+      const embed = findEmbedForAnnotation(container, annotations, activeAnnotationId);
+      embed?.classList.add('active');
     }
   }, [activeAnnotationId, annotations, displayHtml]);
 
@@ -196,14 +250,17 @@ export function MarkdownViewer({
   useEffect(() => {
     if (!activeAnnotationId) return;
 
-    const mark = document.querySelector(
-      `mark[data-annotation-id="${activeAnnotationId}"]`
-    );
+    const mark =
+      document.querySelector(`mark[data-annotation-id="${activeAnnotationId}"]`) ||
+      findEmbedForAnnotation(containerRef.current, annotations, activeAnnotationId);
     if (!mark) return;
 
-    // Only scroll if the highlight isn't already visible
+    // Only scroll if the highlight isn't already visible within the doc column
     const markRect = mark.getBoundingClientRect();
-    if (markRect.top < 0 || markRect.bottom > window.innerHeight) {
+    const viewRect = scrollerRef.current?.getBoundingClientRect();
+    const top = viewRect?.top ?? 0;
+    const bottom = viewRect?.bottom ?? window.innerHeight;
+    if (markRect.top < top || markRect.bottom > bottom) {
       mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     mark.classList.add('highlight-blink');
@@ -216,14 +273,15 @@ export function MarkdownViewer({
       clearTimeout(timer);
       mark.classList.remove('highlight-blink');
     };
-  }, [activeAnnotationId]);
+  }, [activeAnnotationId, annotations]);
 
   // Highlight the pending selection while the popover is open
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container || !selection) return;
 
-    const scrollY = window.scrollY;
+    const scroller = scrollerRef.current;
+    const scrollY = scroller?.scrollTop ?? 0;
     const cleanup = applyPendingHighlight(
       container,
       selection.offset.startOffset,
@@ -232,7 +290,7 @@ export function MarkdownViewer({
       displayMarkdown
     );
     // DOM manipulation can shift scroll; restore it
-    window.scrollTo(0, scrollY);
+    if (scroller) scroller.scrollTop = scrollY;
     return cleanup;
   }, [selection]);
 
@@ -241,9 +299,10 @@ export function MarkdownViewer({
     const container = containerRef.current;
     if (!container || !shownDiffHunks || shownDiffHunks.length === 0) return;
 
-    const scrollY = window.scrollY;
+    const scroller = scrollerRef.current;
+    const scrollY = scroller?.scrollTop ?? 0;
     const cleanup = applyDiffOverlay(container, shownDiffHunks);
-    window.scrollTo(0, scrollY);
+    if (scroller) scroller.scrollTop = scrollY;
     return cleanup;
   }, [shownDiffHunks, displayHtml]);
 
@@ -283,6 +342,116 @@ export function MarkdownViewer({
 
     return () => { cancelled = true; };
   }, [displayHtml]);
+
+  // Open the comment popover for an embedded widget. The comment anchors to
+  // the widget's source block, but the popover is positioned next to the click
+  // target (the 💬 button) rather than the tall widget itself.
+  const openEmbedComment = useCallback((embed: HTMLElement, anchorRect?: DOMRect) => {
+    const start = parseInt(embed.getAttribute('data-source-start') || '0', 10);
+    const end = parseInt(embed.getAttribute('data-source-end') || '0', 10);
+    const raw = displayMarkdown;
+    const block = raw.slice(start, end);
+    // Anchor to a short, real substring of the source so re-anchoring across
+    // edits keeps working (the rendered widget itself has no selectable text).
+    const head = block.replace(/\s+/g, ' ').trim().slice(0, 80);
+    const selectedText = head || 'Embedded widget';
+    const anchorEnd = start + selectedText.length;
+    const offset: SourceOffset = {
+      startOffset: start,
+      endOffset: anchorEnd,
+      selectedText,
+      contextBefore: raw.slice(Math.max(0, start - 30), start),
+      contextAfter: raw.slice(anchorEnd, anchorEnd + 30),
+    };
+    setEmbedSel({ offset, rect: anchorRect ?? embed.getBoundingClientRect(), embedLabel: widgetLabel(block) });
+  }, [displayMarkdown]);
+
+  // Keep a stable reference to the latest handler so the delegated click
+  // listener (mounted once) always calls the current closure.
+  const openEmbedCommentRef = useRef(openEmbedComment);
+  openEmbedCommentRef.current = openEmbedComment;
+
+  // Mount sandboxed iframes into embed placeholders and add a comment affordance.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const embeds = Array.from(
+      container.querySelectorAll('.html-embed[data-embed-srcdoc]')
+    ) as HTMLElement[];
+
+    for (const embed of embeds) {
+      if (embed.querySelector('iframe')) continue; // already mounted
+
+      const b64 = embed.getAttribute('data-embed-srcdoc') || '';
+      let srcdoc = '';
+      try {
+        srcdoc = new TextDecoder().decode(
+          Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+        );
+      } catch {
+        continue;
+      }
+
+      const iframe = document.createElement('iframe');
+      iframe.className = 'html-embed-frame';
+      iframe.setAttribute('sandbox', 'allow-scripts');
+      iframe.setAttribute('scrolling', 'no');
+      iframe.srcdoc = srcdoc;
+      embed.appendChild(iframe);
+
+      // The comment button's click is handled via delegation below — no
+      // per-button listener (which would die when this effect re-runs and
+      // skips already-mounted embeds).
+      const btn = document.createElement('button');
+      btn.className = 'html-embed-comment';
+      btn.title = 'Comment on this widget';
+      btn.textContent = '💬';
+      embed.appendChild(btn);
+    }
+  }, [displayHtml]);
+
+  // Delegated click handler for embed comment buttons (stable across renders).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    function onClick(e: MouseEvent) {
+      const btn = (e.target as HTMLElement).closest?.('.html-embed-comment');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const embed = btn.closest('.html-embed') as HTMLElement | null;
+      if (embed) openEmbedCommentRef.current(embed, btn.getBoundingClientRect());
+    }
+    container.addEventListener('click', onClick);
+    return () => container.removeEventListener('click', onClick);
+  }, []);
+
+  // Size each embed iframe to its content (reported via postMessage).
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      const data = e.data;
+      if (!data || data.__htmlEmbed !== 1 || typeof data.height !== 'number') return;
+      const container = containerRef.current;
+      if (!container) return;
+      const frames = container.querySelectorAll('iframe.html-embed-frame');
+      for (const frame of frames) {
+        if ((frame as HTMLIFrameElement).contentWindow === e.source) {
+          (frame as HTMLIFrameElement).style.height = `${Math.ceil(data.height)}px`;
+          break;
+        }
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
+  function handleSubmitEmbedComment(comment: string, kind: CommentKind) {
+    if (embedSel) {
+      onCreateAnnotation(embedSel.offset, comment, kind, { embedLabel: embedSel.embedLabel });
+      setEmbedSel(null);
+    }
+  }
 
   // Keyboard shortcuts active while a selection is live:
   //  - Cmd/Ctrl+C copies the selected text and dismisses the popover
@@ -408,18 +577,26 @@ export function MarkdownViewer({
   }
 
   return (
-    <div className="markdown-viewer-container">
+    <div className="markdown-viewer-container" ref={scrollerRef}>
       <article
         ref={containerRef}
         className="markdown-viewer"
       />
-      <Minimap contentRef={containerRef} />
+      <Minimap contentRef={containerRef} scrollRef={scrollerRef} />
       {selection && (
         <SelectionPopover
           rect={selection.rect}
           selectedText={selection.offset.selectedText}
           onSubmit={handleSubmitComment}
           onCancel={clearSelection}
+        />
+      )}
+      {embedSel && (
+        <SelectionPopover
+          rect={embedSel.rect}
+          selectedText="Embedded widget"
+          onSubmit={handleSubmitEmbedComment}
+          onCancel={() => setEmbedSel(null)}
         />
       )}
     </div>

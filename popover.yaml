@@ -1,0 +1,566 @@
+- generic [ref=e3]:
+  - banner [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: md-annotate
+      - generic [ref=e8]: /
+      - link "20260625-090308-fig-kiwi-pzc-proposal.md" [ref=e9] [cursor=pointer]:
+        - /url: https://refactored-dollop-2qp6ylv.pages.github.io/documents/20260625-090308-fig-kiwi-pzc-proposal.html
+      - generic [ref=e10]: ·
+      - generic [ref=e11]: Edited just now
+      - generic [ref=e12]:
+        - generic "3:06:13 PM — +1/-1 lines" [ref=e327] [cursor=pointer]
+        - generic "3:05:24 PM — +4/-4 lines" [ref=e298] [cursor=pointer]
+        - generic "10:48:09 AM — +0/-4 lines" [ref=e13] [cursor=pointer]
+        - generic "10:47:58 AM — +3/-3 lines" [ref=e14] [cursor=pointer]
+        - generic "10:47:38 AM — +23/-23 lines" [ref=e15] [cursor=pointer]
+        - generic "10:47:14 AM — +42/-39 lines" [ref=e16] [cursor=pointer]
+        - generic "10:44:30 AM — +5/-4 lines" [ref=e17] [cursor=pointer]
+        - generic "10:44:11 AM — +8/-37 lines" [ref=e18] [cursor=pointer]
+        - generic "10:42:12 AM — +1/-3 lines" [ref=e19] [cursor=pointer]
+        - generic "1:23:41 PM — +1/-2 lines" [ref=e20] [cursor=pointer]
+    - generic "Not connected to Claude Code (no ITERM_SESSION_ID)" [ref=e24]: Claude disconnected
+  - generic [ref=e26]:
+    - generic [ref=e27]:
+      - article [ref=e28]:
+        - 'heading "Partial zero-copy for fig-kiwi: where we are, and why we should adopt it for fig-minimize" [level=1] [ref=e29]'
+        - paragraph [ref=e30]:
+          - text: This is a proposal for
+          - code [ref=e31]: fig-kiwi-pzc
+          - text: — a partial-zero-copy variant of the
+          - code [ref=e32]: fig-kiwi
+          - text: "kiwi decoder — aimed at the fig-minimize optimization work. It argues we should commit to it, and lays out exactly what it costs to carry: the speedup, the memory trade, where the code lives, how a consumer switches between the two decoders, and an audit showing the full fig-kiwi API is implemented (no stubs). It’s implemented, complete, and tested today — a drop-in alternative to"
+          - code [ref=e33]: fig-kiwi
+          - text: selected by a cargo feature, landable as a single change.
+        - heading "What partial zero-copy is, and why it decodes faster" [level=2] [ref=e34]
+        - paragraph [ref=e35]:
+          - text: The
+          - mark [ref=e328] [cursor=pointer]: eager
+          - code [ref=e37]: fig-kiwi
+          - text: decoder — the one in production today — materializes every field as it reads a
+          - code [ref=e38]: NodeChange
+          - text: ": an allocation plus a hash/intern into a shared"
+          - code [ref=e39]: FieldRegistry
+          - text: ", up front, for every field, whether or not anyone reads it. The partial-zero-copy decoder keeps the message as one shared"
+          - code [ref=e40]: Arc<[u8]>
+          - text: buffer and, per
+          - code [ref=e41]: NodeChange
+          - text: ", records only a small"
+          - code [ref=e42]: (tag -> offset)
+          - text: index — caching the few hot fields it always needs (
+          - code [ref=e43]: type
+          - text: ","
+          - code [ref=e44]: guid
+          - text: ) and decoding the rest only when read. Decode becomes “scan and index” rather than “allocate everything,” and is consistently about 2x faster.
+        - generic [ref=e329]:
+          - iframe [ref=e330]:
+            - generic [ref=f7e3]:
+              - generic [ref=f7e4]:
+                - button "▶ Decode" [ref=f7e5] [cursor=pointer]
+                - button "Reset" [ref=f7e6] [cursor=pointer]
+              - generic [ref=f7e7]:
+                - generic [ref=f7e8]:
+                  - heading "Eager" [level=4] [ref=f7e9]
+                  - paragraph [ref=f7e10]: each node owns decoded copies of its fields
+                  - generic [ref=f7e30]: released — no longer referenced
+                - generic [ref=f7e31]:
+                  - heading "Partial zero-copy" [level=4] [ref=f7e32]
+                  - paragraph [ref=f7e33]: each node holds offsets into one retained buffer
+                  - generic [ref=f7e53]: kept resident — the nodes below still reference these bytes
+              - paragraph [ref=f7e54]
+          - button "💬" [ref=e331] [cursor=pointer]
+        - paragraph [ref=e48]:
+          - text: Re-encoding an untouched node is then a
+          - code [ref=e49]: memcpy
+          - text: "of its byte range, so encode beats eager too. The one subtlety is blobs: a naive re-encode reassigns blob indices in encounter order, shifting them and forcing a slow field-by-field path on any file that has blobs. The preserve-index encoder instead emits the blob section in the"
+          - emphasis [ref=e50]: source’s
+          - text: index order, so every unchanged node’s indices stay valid and the whole node copies straight through.
+        - generic [ref=e332]:
+          - iframe [ref=e333]:
+            - generic [ref=f8e3]:
+              - generic [ref=f8e4]:
+                - button "▶ Re-encode document" [ref=f8e5] [cursor=pointer]
+                - button "Reset" [ref=f8e6] [cursor=pointer]
+              - generic [ref=f8e7]:
+                - generic [ref=f8e8]:
+                  - heading "Eager" [level=4] [ref=f8e9]
+                  - paragraph [ref=f8e10]: rebuilds each node field by field
+                  - generic [ref=f8e11]: in memory
+                  - generic [ref=f8e13]:
+                    - generic [ref=f8e14]:
+                      - generic [ref=f8e15]: node 0
+                      - generic [ref=f8e16]:
+                        - generic [ref=f8e17]: type
+                        - generic [ref=f8e18]: guid
+                        - generic [ref=f8e19]: name
+                        - generic [ref=f8e20]: transform
+                    - generic [ref=f8e21]:
+                      - generic [ref=f8e22]: node 1
+                      - generic [ref=f8e23]:
+                        - generic [ref=f8e24]: type
+                        - generic [ref=f8e25]: guid
+                        - generic [ref=f8e26]: name
+                        - generic [ref=f8e27]: transform
+                    - generic [ref=f8e28]:
+                      - generic [ref=f8e29]: node 2
+                      - generic [ref=f8e30]:
+                        - generic [ref=f8e31]: type
+                        - generic [ref=f8e32]: guid
+                        - generic [ref=f8e33]: name
+                        - generic [ref=f8e34]: image
+                  - generic [ref=f8e35]: → output buffer
+                  - generic [ref=f8e50]:
+                    - text: write operations
+                    - generic [ref=f8e51]: "0"
+                - generic [ref=f8e52]:
+                  - heading "Partial zero-copy" [level=4] [ref=f8e53]
+                  - paragraph [ref=f8e54]: copies each unchanged node’s byte range whole
+                  - generic [ref=f8e55]: in memory
+                  - generic [ref=f8e56]:
+                    - generic [ref=f8e73]: retained input buffer above — each node copies its byte range from it
+                    - generic [ref=f8e74]:
+                      - generic [ref=f8e75]:
+                        - generic [ref=f8e76]: node 0
+                        - generic [ref=f8e77]:
+                          - generic [ref=f8e78]: type
+                          - generic [ref=f8e79]: guid
+                        - generic [ref=f8e80]:
+                          - generic [ref=f8e81]: name → @4
+                          - generic [ref=f8e83]: transform → @7
+                      - generic [ref=f8e85]:
+                        - generic [ref=f8e86]: node 1
+                        - generic [ref=f8e87]:
+                          - generic [ref=f8e88]: type
+                          - generic [ref=f8e89]: guid
+                        - generic [ref=f8e90]:
+                          - generic [ref=f8e91]: name → @14
+                          - generic [ref=f8e93]: transform → @17
+                      - generic [ref=f8e95]:
+                        - generic [ref=f8e96]: node 2
+                        - generic [ref=f8e97]:
+                          - generic [ref=f8e98]: type
+                          - generic [ref=f8e99]: guid
+                        - generic [ref=f8e100]:
+                          - generic [ref=f8e101]: name → @24
+                          - generic [ref=f8e103]: image → @27
+                  - generic [ref=f8e105]: → output buffer
+                  - generic [ref=f8e120]:
+                    - text: memcpy operations
+                    - generic [ref=f8e121]: "0"
+              - paragraph [ref=f8e122]
+          - button "💬" [ref=e334] [cursor=pointer]
+        - 'heading "The downside: memory" [level=2] [ref=e54]'
+        - paragraph [ref=e55]:
+          - text: The same design that makes decode cheap is what costs memory. Eager’s
+          - code [ref=e56]: FieldRegistry
+          - text: interns duplicate field values across nodes — so on repetitive documents its resident set can be
+          - emphasis [ref=e57]: smaller
+          - text: "than the raw bytes — while pzc keeps the whole buffer and holds every value, duplicates included. The trade points the other way from latency: roughly parity to ~1.8x eager on most real files, and much worse only on a pathological all-duplicate file (though tiny in absolute terms). (An earlier 2x regression from holding blobs twice — once in the buffer, once in the decoded blob map — was fixed by compacting node buffers after decode, which is why many blob-heavy files now sit at ~parity.)"
+        - generic [ref=e335]:
+          - iframe [ref=e336]:
+            - generic [ref=f9e3]:
+              - generic [ref=f9e5]:
+                - generic [ref=f9e6]: value duplication
+                - slider "value duplication" [ref=f9e7]: "55"
+                - generic [ref=f9e8]: 55%
+              - generic [ref=f9e9]:
+                - generic [ref=f9e10]:
+                  - heading "Eager" [level=4] [ref=f9e11]
+                  - paragraph [ref=f9e12]: interns identical values — each distinct value stored once
+                  - generic [ref=f9e13]: interning hash map — 10 distinct values
+                  - generic [ref=f9e25]: node changes
+                  - generic [ref=f9e27]:
+                    - generic [ref=f9e29]: node 0
+                    - generic [ref=f9e37]: node 1
+                    - generic [ref=f9e45]: node 2
+                    - generic [ref=f9e53]: node 3
+                  - generic [ref=f9e60]: resident memory
+                  - generic [ref=f9e64]:
+                    - text: relative size
+                    - generic [ref=f9e65]: 1.0×
+                - generic [ref=f9e66]:
+                  - heading "Partial zero-copy" [level=4] [ref=f9e67]
+                  - paragraph [ref=f9e68]: keeps every value in the buffer — no dedup
+                  - generic [ref=f9e69]: retained buffer — all 20 values
+                  - generic [ref=f9e95]: node changes
+                  - generic [ref=f9e97]:
+                    - generic [ref=f9e99]: node 0
+                    - generic [ref=f9e107]: node 1
+                    - generic [ref=f9e115]: node 2
+                    - generic [ref=f9e123]: node 3
+                  - generic [ref=f9e130]: resident memory
+                  - generic [ref=f9e134]:
+                    - text: relative size
+                    - generic [ref=f9e135]: 1.76×
+          - button "💬" [ref=e337] [cursor=pointer]
+        - heading "Benchmarks" [level=2] [ref=e61]
+        - paragraph [ref=e62]:
+          - text: The figures above show the mechanics; these are the measured results. Full tables and exact reproduction commands are in the committed
+          - link "BENCHMARKS.md" [ref=e63] [cursor=pointer]:
+            - /url: https://github.com/figma/figma/blob/741c251bc9678a659d8c73eea48b0c32680dce4e/rust/fig-kiwi-pzc-compare/BENCHMARKS.md
+            - code [ref=e64]: BENCHMARKS.md
+          - text: (31 real
+          - code [ref=e65]: .fig
+          - text: "files, tiny -> 566 MB). By axis:"
+        - list [ref=e309]:
+          - listitem [ref=e310]:
+            - strong [ref=e68]:
+              - link "Decode" [ref=e311] [cursor=pointer]:
+                - /url: https://github.com/figma/figma/blob/741c251bc9678a659d8c73eea48b0c32680dce4e/rust/fig-kiwi-pzc-compare/BENCHMARKS.md#decode-latency
+            - text: — faster on every file, typically 1.7–2.7× (up to ~4× on large structural files).
+          - listitem [ref=e312]:
+            - strong [ref=e72]:
+              - link "Encode" [ref=e313] [cursor=pointer]:
+                - /url: https://github.com/figma/figma/blob/741c251bc9678a659d8c73eea48b0c32680dce4e/rust/fig-kiwi-pzc-compare/BENCHMARKS.md#encode-latency
+            - text: — faster on every non-trivial file, typically 14–32× on large files, via the preserve-index memcpy path.
+          - listitem [ref=e314]:
+            - strong [ref=e76]:
+              - link "Memory" [ref=e315] [cursor=pointer]:
+                - /url: https://github.com/figma/figma/blob/741c251bc9678a659d8c73eea48b0c32680dce4e/rust/fig-kiwi-pzc-compare/BENCHMARKS.md#memory-resident-decoded-structure
+            - text: "— the trade, pointing the other way: parity to ~1.8× eager on real files (small files actually win)."
+          - listitem [ref=e316]:
+            - strong [ref=e80]:
+              - link "End-to-end fig-minimize" [ref=e317] [cursor=pointer]:
+                - /url: https://github.com/figma/figma/blob/741c251bc9678a659d8c73eea48b0c32680dce4e/rust/fig-kiwi-pzc-compare/BENCHMARKS.md#3-end-to-end-fig-minimize-eager-vs-pzc-subprocess
+            - text: — ~1.3–2.4× on the files that matter; diluted by query-graph filtering and zstd, which are codec-agnostic.
+        - 'heading "The approach: one cargo feature picks the representation" [level=2] [ref=e83]'
+        - paragraph [ref=e84]:
+          - text: A consumer chooses the decoder with a cargo feature.
+          - code [ref=e85]: eager
+          - text: is the default (the production
+          - code [ref=e86]: fig-kiwi
+          - text: ); turning on
+          - code [ref=e87]: pzc
+          - text: swaps in
+          - code [ref=e88]: fig-kiwi-pzc
+          - text: ". The feature cascades through the dependency chain, so a leaf binary sets it once:"
+        - code [ref=e90]: "cargo build -p fig-minimize # eager (default) cargo build -p fig-minimize --no-default-features --features pzc # partial zero-copy"
+        - paragraph [ref=e91]:
+          - text: Under the hood it’s two crates (
+          - code [ref=e92]: fig-kiwi
+          - text: ","
+          - code [ref=e93]: fig-kiwi-pzc
+          - text: ), each one representation, both exposing the same
+          - code [ref=e94]: fig_kiwi
+          - text: API. (Two crates rather than a single crate with a mutually-exclusive
+          - code [ref=e95]: pzc
+          - text: feature, because the latter fights
+          - code [ref=e96]: cargo --all-features
+          - text: and Bazel’s no-default-features model — but from a consumer’s seat it’s still just the one flag.)
+        - 'heading "Blast radius: where the code lives and what it touches" [level=2] [ref=e97]'
+        - paragraph [ref=e98]:
+          - text: The whole thing is two new crates plus small, mechanical edits to the crates that sit between fig-kiwi and the binaries. The production
+          - code [ref=e99]: fig-kiwi
+          - text: runtime source is
+          - strong [ref=e100]: not
+          - text: modified.
+        - paragraph [ref=e101]: "New (everything pzc lives here):"
+        - list [ref=e102]:
+          - listitem [ref=e103]:
+            - code [ref=e104]: rust/fig-kiwi-pzc/
+            - text: "— the partial-zero-copy decoder. What it actually owns is small:"
+            - code [ref=e105]: src/lib.rs
+            - text: (the shared-buffer/blob plumbing) and its
+            - code [ref=e106]: src/fig/
+            - text: module (the
+            - code [ref=e107]: NodeChange
+            - text: /
+            - code [ref=e108]: Message
+            - text: decode, encode, and mutation bodies — the genuinely different code is
+            - code [ref=e109]: impl_message.rs
+            - text: ","
+            - code [ref=e110]: impl_node_change.rs
+            - text: ", and"
+            - code [ref=e111]: unit_tests.rs
+            - text: ; the tiny
+            - code [ref=e112]: impl_blob
+            - text: /
+            - code [ref=e113]: impl_v55
+            - text: /
+            - code [ref=e114]: impl_multiplayer_map_entry
+            - text: are byte-identical to eager but left local since they’re declared by the local
+            - code [ref=e115]: fig/mod.rs
+            - text: ), plus 3 divergent tests. Everything else — the ~16 top-level runtime modules, the field-extension subtree, the other tests, and the test schema — is shared verbatim from
+            - code [ref=e116]: fig-kiwi
+            - text: via
+            - code [ref=e117]: "#[path]"
+            - text: (see Maintainability below).
+          - listitem [ref=e118]:
+            - code [ref=e119]: rust/fig-kiwi-pzc-compare/
+            - text: — the differential oracle + the
+            - code [ref=e120]: .fig
+            - text: benchmark (
+            - code [ref=e121]: figbench
+            - text: ).
+        - paragraph [ref=e122]: "Modified:"
+        - list [ref=e123]:
+          - listitem [ref=e124]:
+            - code [ref=e125]: rust/fig-kiwi/fig-kiwi-codegen/src/lib.rs
+            - text: — the one generator now emits either representation (a flag selects the
+            - code [ref=e126]: NodeChange
+            - text: body; everything else is identical). This is the only change to anything under
+            - code [ref=e127]: fig-kiwi/
+            - text: ", and it changes generated code, not the runtime."
+          - listitem [ref=e128]:
+            - code [ref=e129]: rust/fig-kiwi/BUILD.bazel
+            - text: — a
+            - code [ref=e130]: filegroup
+            - text: exporting the files pzc shares via
+            - code [ref=e131]: "#[path]"
+            - text: .
+          - listitem [ref=e132]:
+            - strong [ref=e133]: 8 in-between crates
+            - text: ", each with a tiny two-part change (Cargo.toml + a 2-line"
+            - code [ref=e134]: lib.rs
+            - text: "binding — see next section):"
+            - code [ref=e135]: collaborative-text
+            - text: ","
+            - code [ref=e136]: field-diffing
+            - text: ","
+            - code [ref=e137]: node-field-defaults
+            - text: ","
+            - code [ref=e138]: wire-format
+            - text: ","
+            - code [ref=e139]: file
+            - text: ","
+            - code [ref=e140]: file-migrations
+            - text: ","
+            - code [ref=e141]: document-graph
+            - text: ","
+            - code [ref=e142]: fig-minimize
+            - text: .
+          - listitem [ref=e143]:
+            - text: "Workspace plumbing: root"
+            - code [ref=e144]: Cargo.toml
+            - text: members,
+            - code [ref=e145]: bazel/rust/BUILD.bazel
+            - text: manifests,
+            - code [ref=e146]: rust/dependencies.json
+            - text: .
+        - paragraph [ref=e147]:
+          - text: Every other crate that depends on
+          - code [ref=e148]: fig-kiwi
+          - text: directly and only ever wants eager is
+          - strong [ref=e149]: untouched
+          - text: — the diff above modifies only those 8 in-between crates; the rest keep depending on
+          - code [ref=e150]: fig-kiwi
+          - text: ", which still defaults to eager."
+        - heading "Maintainability" [level=2] [ref=e151]
+        - paragraph [ref=e152]:
+          - strong [ref=e153]: The cost to a consumer is tiny, and there is no trait and no API change
+          - text: "— the public API is identical between the two crates. A crate that sits between fig-kiwi and a binary needs two small things:"
+        - list [ref=e154]:
+          - listitem [ref=e155]:
+            - emphasis [ref=e156]: Cargo.toml
+            - text: ": an"
+            - code [ref=e157]: eager
+            - text: /
+            - code [ref=e158]: pzc
+            - text: feature pair selecting which crate to depend on. Example (
+            - code [ref=e159]: wire-format
+            - text: "):"
+            - code [ref=e161]: "[features] default = [\"eager\"] eager = [\"dep:fig-kiwi\", \"collaborative-text/eager\"] pzc = [\"dep:fig_kiwi_pzc\", \"collaborative-text/pzc\"]"
+          - listitem [ref=e162]:
+            - emphasis [ref=e163]:
+              - link "lib.rs" [ref=e164] [cursor=pointer]:
+                - /url: http://lib.rs
+            - text: ": a two-line binding so the rest of the crate’s"
+            - code [ref=e165]: fig_kiwi::…
+            - text: "references resolve to whichever was selected:"
+            - code [ref=e167]:
+              - generic [ref=e168]: "#[cfg(feature = \"pzc\")]"
+              - text: extern crate fig_kiwi_pzc as fig_kiwi;
+        - paragraph [ref=e169]:
+          - text: That’s the entire per-consumer cost — no method signatures change, no trait is introduced, no call sites move. We could avoid a trait because both
+          - code [ref=e170]: NodeChange
+          - text: types expose the exact same method names, so the same
+          - code [ref=e171]: fig_kiwi::…
+          - text: code compiles against either and the feature just decides which it binds to.
+        - paragraph [ref=e172]:
+          - text: "Carrying cost for the fig-kiwi maintainers is low too, and this is an internal detail rather than something consumers see:"
+          - code [ref=e173]: fig-kiwi-pzc
+          - text: shares almost all of its source with
+          - code [ref=e174]: fig-kiwi
+          - text: rather than forking it. One generator emits both representations (they differ in exactly one type,
+          - code [ref=e175]: NodeChange
+          - text: ), and the byte-identical runtime and test files are
+          - code [ref=e176]: "#[path]"
+          - text: "-included from a single canonical copy in"
+          - code [ref=e177]: fig-kiwi
+          - text: . So there is no second copy of the codebase to keep in sync — only the genuinely-different files (the
+          - code [ref=e178]: NodeChange
+          - text: decode/encode bodies) live in the pzc crate.
+        - paragraph [ref=e179]:
+          - strong [ref=e180]: What we explicitly chose not to do, and why.
+          - text: A
+          - code [ref=e181]: fig-kiwi-core
+          - text: library that both crates depend on would compile the shared code once instead of per-crate, but the big shared files (
+          - code [ref=e182]: fig_ext
+          - text: ","
+          - code [ref=e183]: style_helpers
+          - text: ", …) reference the concrete"
+          - code [ref=e184]: NodeChange
+          - text: type, which differs per crate — so they can’t live in a shared library without introducing a trait to abstract over it. That trait is a much larger, cross-cutting change for a build-time-only benefit;
+          - code [ref=e185]: "#[path]"
+          - text: removes the duplicated source without it. (If we ever want the compile-once win, the handful of representation-agnostic files —
+          - code [ref=e186]: property
+          - text: ","
+          - code [ref=e187]: field_registry
+          - text: ","
+          - code [ref=e188]: packed_map
+          - text: ", … — are the clean candidates to lift into a core crate later; the type-coupled ones are not.)"
+        - heading "API completeness audit" [level=2] [ref=e189]
+        - paragraph [ref=e190]:
+          - text: "The point of an audit: confirm pzc implements the"
+          - emphasis [ref=e191]: entire
+          - text: fig-kiwi API — no
+          - code [ref=e192]: unimplemented!
+          - text: ", no"
+          - code [ref=e193]: todo!
+          - text: ", no stubbed methods that would surface as a panic at runtime under"
+          - code [ref=e194]: "--features pzc"
+          - text: .
+        - list [ref=e195]:
+          - listitem [ref=e196]:
+            - checkbox [checked] [disabled] [ref=e197]
+            - strong [ref=e198]: No stubs anywhere in pzc.
+            - text: Zero
+            - code [ref=e199]: unimplemented!
+            - text: /
+            - code [ref=e200]: todo!
+            - text: /
+            - code [ref=e201]: unreachable!
+            - text: in
+            - code [ref=e202]: fig-kiwi-pzc
+            - text: ’s source or in the code its generator emits. (The only
+            - code [ref=e203]: panic!
+            - text: s are a test assertion and
+            - code [ref=e204]: build.rs
+            - text: error handling.)
+          - listitem [ref=e205]:
+            - checkbox [checked] [disabled] [ref=e206]
+            - strong [ref=e207]: Every public method eager has, pzc has.
+            - text: "Diffing the generated public-fn names: every"
+            - code [ref=e208]: pub fn
+            - text: name in eager’s output also exists in pzc’s (with a few pzc-only extras, e.g. the node-buffer compaction helpers). The hand-written
+            - code [ref=e209]: NodeChange
+            - text: helpers match name-for-name too.
+          - listitem [ref=e210]:
+            - checkbox [checked] [disabled] [ref=e211]
+            - strong [ref=e212]: The full stack compiles under pzc.
+            - code [ref=e213]: fig-minimize
+            - text: and every crate beneath it build with
+            - code [ref=e214]: "--features pzc"
+            - text: . If pzc were missing a method any of them call, this wouldn’t compile.
+          - listitem [ref=e215]:
+            - checkbox [checked] [disabled] [ref=e216]
+            - strong [ref=e217]: Mutation is real, not deferred.
+            - text: Copy-on-write overlay, all setters/builders,
+            - code [ref=e218]: remove
+            - text: /
+            - code [ref=e219]: apply
+            - text: /
+            - code [ref=e220]: merge
+            - text: ", the blob re-encode with index rewriting — all implemented and exercised by the differential proptests."
+          - listitem [ref=e221]:
+            - checkbox [checked] [disabled] [ref=e222]
+            - strong [ref=e223]: Behavior matches eager.
+            - text: The differential oracle decodes the same bytes with both and asserts the re-encodes are decode-equivalent (pzc’s output, normalized through the eager codec, reproduces eager’s canonical bytes), sequentially and via the parallel decoder, plus proptests over arbitrary messages. Green.
+          - listitem [ref=e224]:
+            - checkbox [checked] [disabled] [ref=e225]
+            - strong [ref=e226]: Two tests intentionally diverge (documented, not gaps).
+            - text: Both are eager-only semantics the pzc design deliberately differs on, each
+            - code [ref=e227]: "#[ignore]"
+            - text: "d with a reason:"
+            - list [ref=e228]:
+              - listitem [ref=e229]:
+                - code [ref=e230]: blobs_not_held_after_removing_from_message
+                - text: — pzc shares one blob set across a message’s nodes, so a blob stays resident until all of that message’s nodes drop (eager frees per-node). A memory trade of the shared-buffer design, not a correctness bug.
+              - listitem [ref=e231]:
+                - code [ref=e232]: deeply_nested_unknown_fields_without_schema_error
+                - text: — pzc’s decode scan is leniently pass-through on an unknown nested field with no schema (preserves the bytes round-trip exact); eager hard-errors. Better for fig-minimize’s pass-through; the with-schema path is covered and passing.
+        - paragraph [ref=e233]:
+          - text: "Test status (current):"
+          - code [ref=e234]: fig-kiwi
+          - text: 76/0,
+          - code [ref=e235]: fig-kiwi-pzc
+          - text: 73/0/2-ignored,
+          - code [ref=e236]: fig-kiwi-pzc-compare
+          - text: 7/0 (differential oracle + proptests) plus a 2-test
+          - code [ref=e237]: encode_fast_path
+          - text: binary (the memcpy fast path engages on both encode paths).
+          - code [ref=e238]: fig-minimize
+          - text: 40/0 under both eager and pzc (its own optimized-vs-regular property test). All green under both
+          - code [ref=e239]: cargo test
+          - text: and
+          - code [ref=e240]: bazel test
+          - text: .
+        - heading "Open / not yet done" [level=2] [ref=e241]
+        - list [ref=e242]:
+          - listitem [ref=e243]:
+            - text: This stack sits on top of the fig-minimize optimized-path branches (the split + the fig-
+            - code [ref=e244]: NodeChange
+            - text: "-end-to-end"
+            - code [ref=e81]: "--optimized"
+            - text: path); pzc’s encode win on fig-minimize depends on that optimized path landing (the regular path still round-trips through wire-format, which re-encodes — and re-drops blobs — outside
+            - code [ref=e246]: fig::Message
+            - text: ).
+          - listitem [ref=e247]:
+            - text: Bazel target for the
+            - code [ref=e248]: fig-minimize
+            - emphasis [ref=e249]: pzc binary
+            - text: (the differential test is wired into Bazel, but a
+            - code [ref=e250]: fig-minimize --features pzc
+            - text: binary target is not). The cargo build works today.
+          - listitem [ref=e251]: "Rollout: flag-gated subprocess swap at the spawn site (scenegraph-server / thumbnailing), shadow-mode validated via the decode-equivalence check on real traffic. Deliberately deferred — this branch builds the binary the right way for it but doesn’t ship the swap."
+          - listitem [ref=e252]: "Optional later: a trailing-placeholder truncation (today the trim emits a 1-byte 0-length entry per unreferenced source blob; truncating trailing ones would shave a few bytes — negligible)."
+          - listitem [ref=e253]:
+            - text: "Optional later: lift the representation-agnostic files into a"
+            - code [ref=e254]: fig-kiwi-core
+            - text: library for the compile-once win (not required for correctness or the current dedup).
+      - generic [ref=e318]:
+        - generic "Embedded widget" [ref=e319]: "\"Embedded widget\""
+        - generic [ref=e320]:
+          - textbox "Add a comment..." [active] [ref=e321]: Can we slow down the decode animation?
+          - generic [ref=e322]:
+            - button "Cancel" [ref=e323] [cursor=pointer]
+            - button "Question" [ref=e324] [cursor=pointer]
+            - button "Comment ⌘+↵" [ref=e325] [cursor=pointer]:
+              - text: Comment
+              - generic [ref=e326]: ⌘+↵
+    - complementary [ref=e257]:
+      - tablist [ref=e259]:
+        - tab "Comments 0 open, 4 resolved" [selected] [ref=e260] [cursor=pointer]:
+          - text: Comments
+          - generic [ref=e261]: 0 open, 4 resolved
+        - tab "Review 4" [ref=e262] [cursor=pointer]:
+          - text: Review
+          - generic [ref=e263]: "4"
+      - generic [ref=e264]:
+        - generic [ref=e265]:
+          - generic [ref=e266]: Resolved
+          - button "Delete all resolved" [ref=e267] [cursor=pointer]:
+            - img [ref=e268]
+        - generic [ref=e270] [cursor=pointer]:
+          - generic [ref=e271]:
+            - img [ref=e272]
+            - generic [ref=e274]: Workstreams declarative-checkpointing
+            - generic [ref=e275]: 2 msgs · 4h ago
+          - generic [ref=e276]: remove this
+        - generic [ref=e277] [cursor=pointer]:
+          - generic [ref=e278]:
+            - img [ref=e279]
+            - generic [ref=e281]: eager
+            - generic [ref=e282]: 2 msgs · 4h ago
+          - generic [ref=e283]: let's make sure that we tell the user the eager fig kiwi decoder is what exis...
+        - generic [ref=e284] [cursor=pointer]:
+          - generic [ref=e285]:
+            - img [ref=e286]
+            - generic [ref=e288]: when it reads
+            - generic [ref=e289]: 2 msgs · 4h ago
+          - generic [ref=e290]: seems gramatically incorrect
+        - generic [ref=e291] [cursor=pointer]:
+          - generic [ref=e292]:
+            - img [ref=e293]
+            - generic [ref=e295]: Status
+            - generic [ref=e296]: 2 msgs · 4h ago
+          - generic [ref=e297]: status and date section should be removed. I think we need to just like dive ...

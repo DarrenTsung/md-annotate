@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
-import type { Annotation } from '@shared/types.js';
+import type { Annotation, CommentKind } from '@shared/types.js';
 import { CommentForm } from './CommentForm.js';
+import { ThreadComments, formatTime } from './ThreadComments.js';
 
 interface CommentThreadProps {
   annotation: Annotation;
   isActive: boolean;
   forceExpanded?: boolean;
   onActivate: () => void;
-  onReply: (text: string) => void;
+  onReply: (text: string, kind: CommentKind) => void;
   onResolve: () => void;
   onReopen: () => void;
   onDelete: () => void;
+  onManualCollapse?: () => void;
+  replyDraft: string;
+  onReplyDraftChange: (text: string) => void;
 }
 
 export function CommentThread({
@@ -22,11 +26,14 @@ export function CommentThread({
   onResolve,
   onReopen,
   onDelete,
+  onManualCollapse,
+  replyDraft,
+  onReplyDraftChange,
 }: CommentThreadProps) {
   const [showReply, setShowReply] = useState(false);
 
-  function handleReply(text: string) {
-    onReply(text);
+  function handleReply(text: string, kind: CommentKind) {
+    onReply(text, kind);
     setShowReply(false);
   }
 
@@ -92,6 +99,20 @@ export function CommentThread({
       }}
     >
       <div className="thread-icons">
+        {isResolved && onManualCollapse && (
+          <button
+            className="thread-icon-btn thread-collapse"
+            title="Collapse"
+            onClick={(e) => {
+              e.stopPropagation();
+              onManualCollapse();
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 6.5L8 10.5L12 6.5"/>
+            </svg>
+          </button>
+        )}
         <button
           className={`thread-icon-btn ${isResolved ? 'thread-unresolve' : 'thread-resolve'}`}
           title={isResolved ? 'Reopen' : 'Resolve'}
@@ -117,48 +138,7 @@ export function CommentThread({
           </svg>
         </button>
       </div>
-      <div className="thread-comments">
-        {annotation.comments.map((comment, index) => (
-          <div
-            key={comment.id}
-            className={`thread-comment ${comment.author === 'claude' ? 'claude-comment' : 'user-comment'}`}
-          >
-            <div className="comment-header">
-              <span className="comment-author">
-                {comment.author === 'claude' ? 'Claude' : 'You'}
-              </span>
-              <span className="comment-time">
-                {formatTime(comment.createdAt)}
-              </span>
-              {index === 0 && annotation.working && (
-                <span className="working-dot" title="Claude is working on this" />
-              )}
-              {index === 0 && !annotation.working && isPending(annotation) && (
-                <span className="pending-dot" title="Waiting for Claude" />
-              )}
-            </div>
-            {index === 0 && (
-              <blockquote
-                className="comment-quote"
-                onClick={scrollToHighlight}
-                title="Scroll to highlight"
-              >
-                {annotation.selectedText.length > 60
-                  ? annotation.selectedText.slice(0, 57) + '...'
-                  : annotation.selectedText}
-              </blockquote>
-            )}
-            <div className="comment-text" dangerouslySetInnerHTML={{ __html: renderCommentMarkdown(comment.text) }} />
-          </div>
-        ))}
-        {annotation.working && (
-          <div className="thread-comment claude-comment typing-indicator" aria-label="Claude is typing">
-            <div className="typing-dots">
-              <span /><span /><span />
-            </div>
-          </div>
-        )}
-      </div>
+      <ThreadComments annotation={annotation} onQuoteClick={scrollToHighlight} />
 
       {isActive && (
         <div className="thread-actions">
@@ -166,6 +146,8 @@ export function CommentThread({
             onSubmit={handleReply}
             onCancel={() => setShowReply(false)}
             autoFocus
+            value={replyDraft}
+            onChange={onReplyDraftChange}
           />
         </div>
       )}
@@ -173,58 +155,3 @@ export function CommentThread({
   );
 }
 
-/**
- * Lightweight inline markdown renderer for comment text.
- * Supports: fenced code blocks, inline code, bold, italic, line breaks.
- */
-function renderCommentMarkdown(text: string): string {
-  // Escape HTML first
-  const esc = (s: string) =>
-    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-  // Extract fenced code blocks before processing inline markdown
-  const blocks: string[] = [];
-  const withPlaceholders = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, _lang, code) => {
-    blocks.push(`<pre><code>${esc(code.replace(/\n$/, ''))}</code></pre>`);
-    return `\x00BLOCK${blocks.length - 1}\x00`;
-  });
-
-  // Process inline markdown on non-code-block parts
-  const rendered = withPlaceholders
-    .split(/(\x00BLOCK\d+\x00)/)
-    .map((part) => {
-      const blockMatch = part.match(/^\x00BLOCK(\d+)\x00$/);
-      if (blockMatch) return blocks[parseInt(blockMatch[1], 10)];
-      // Inline: code, bold, italic, line breaks
-      return esc(part)
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/\n/g, '<br>');
-    })
-    .join('');
-
-  return rendered;
-}
-
-function isPending(annotation: Annotation): boolean {
-  if (annotation.status !== 'open') return false;
-  const last = annotation.comments[annotation.comments.length - 1];
-  return !!last && last.author === 'user';
-}
-
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-
-  if (diff < 60000) return 'just now';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'America/Los_Angeles',
-  });
-}
