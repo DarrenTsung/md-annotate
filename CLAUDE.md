@@ -55,6 +55,9 @@ md-annotate end <annotation-id>
 # Show pending annotations needing replies
 md-annotate status
 
+# Reprint an annotation's full body (read-only; useful when `next` output has scrolled off)
+md-annotate show <annotation-id>
+
 # Dev (single server with HMR)
 npm run dev
 # Then open http://localhost:3456?file=/path/to/test.md

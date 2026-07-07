@@ -55,6 +55,9 @@ md-annotate end <annotation-id>
 
 # Show pending annotations
 md-annotate status
+
+# Reprint an annotation's full body (read-only; does not change working state)
+md-annotate show <annotation-id>
 ```
 
 ### Development

@@ -594,6 +594,37 @@ export function createApiRouter(fileManager: FileManager): Router {
     }
   });
 
+  // GET /api/show?session=...&annotationId=... — CLI: md-annotate show <id>
+  // Read-only: reprints a specific annotation without changing working state.
+  router.get('/show', (req, res) => {
+    const session = typeof req.query.session === 'string' ? req.query.session : null;
+    const annotationId =
+      typeof req.query.annotationId === 'string' ? req.query.annotationId : null;
+    if (!session || !annotationId) {
+      res.status(400).json({ error: 'session and annotationId query parameters are required' });
+      return;
+    }
+
+    const found = fileManager.findAnnotation(session, annotationId);
+    if (!found) {
+      res.status(404).json({ error: 'Annotation not found in any file for this session' });
+      return;
+    }
+
+    try {
+      fileManager.ensureFresh(found.filePath);
+      const annotation = found.svc.getById(annotationId);
+      if (!annotation) {
+        res.status(404).json({ error: 'Annotation not found' });
+        return;
+      }
+      res.json({ filePath: found.filePath, annotation });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  });
+
   // POST /api/remove-action?filePath=...
   // Removes a single action from an <!-- @actions: ... --> comment in the markdown file.
   // If it was the last action, removes the entire comment.

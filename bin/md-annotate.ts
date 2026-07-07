@@ -133,54 +133,32 @@ async function cliEnd(): Promise<void> {
   console.log(`${annotationId} — stopped working`);
 }
 
-async function cliNext(): Promise<void> {
-  const session = process.env.ITERM_SESSION_ID;
-  if (!session) {
-    console.error('Error: $ITERM_SESSION_ID is not set');
-    process.exit(1);
-  }
+interface AnnotationBody {
+  id: string;
+  selectedText: string;
+  startOffset: number;
+  endOffset: number;
+  embedLabel?: string;
+  comments: Array<{ author: string; text: string; kind?: 'comment' | 'question'; createdAt: string }>;
+  createdAt: string;
+}
 
-  const url = `http://localhost:${PORT}/api/next?session=${encodeURIComponent(session)}`;
-  const res = await fetch(url, { method: 'POST' });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    console.error(`Error: ${(err as { error: string }).error}`);
-    process.exit(1);
-  }
-
-  const data = (await res.json()) as {
-    filePath: string;
-    annotation: {
-      id: string;
-      selectedText: string;
-      startOffset: number;
-      endOffset: number;
-      embedLabel?: string;
-      comments: Array<{ author: string; text: string; kind?: 'comment' | 'question'; createdAt: string }>;
-      createdAt: string;
-    } | null;
-    remaining: number;
-  };
-
-  if (!data.annotation) {
-    console.log('No pending annotations.');
-    return;
-  }
-
-  const a = data.annotation;
+// Prints the shared annotation body (file, context, selected text, comments)
+// used by both `next` and `show`. Returns whether the latest user comment is a
+// question, so callers can tailor the instructions block.
+function printAnnotationBody(filePath: string, a: AnnotationBody): boolean {
   const sep = '─'.repeat(60);
   const lastUserComment = [...a.comments].reverse().find((c) => c.author === 'user');
   const isQuestion = lastUserComment?.kind === 'question';
 
   console.log(sep);
-  console.log(`File: ${data.filePath}`);
+  console.log(`File: ${filePath}`);
   console.log(`ID: ${a.id}`);
   if (isQuestion) {
     console.log(`Kind: QUESTION — respond in the comment thread only. Do NOT edit the document.`);
   }
 
-  const content = fs.readFileSync(data.filePath, 'utf-8');
+  const content = fs.readFileSync(filePath, 'utf-8');
   const startLine = content.slice(0, a.startOffset).split('\n').length;
 
   if (a.embedLabel) {
@@ -188,7 +166,7 @@ async function cliNext(): Promise<void> {
     // text selection. Don't dump the raw HTML — just point Claude at it.
     console.log(sep);
     console.log(`Target: embedded HTML widget "${a.embedLabel}" (line ${startLine}).`);
-    console.log(`  Open ${data.filePath} around line ${startLine} to read/edit the widget's markup.`);
+    console.log(`  Open ${filePath} around line ${startLine} to read/edit the widget's markup.`);
     console.log(sep);
   } else {
     // Show context with XML tags around the exact selected text
@@ -219,6 +197,12 @@ async function cliNext(): Promise<void> {
     console.log(`  ${c.author}${tag}: ${c.text}`);
   }
   console.log(sep);
+  return isQuestion;
+}
+
+// Prints the reply/resolve guidance block shared by `next` and `show`.
+function printAnnotationInstructions(a: AnnotationBody, isQuestion: boolean): void {
+  const sep = '─'.repeat(60);
   // Instruct the LLM to keep its full response inside `md-annotate reply` so
   // the user (who is reading in the md-annotate UI, not the terminal) sees it.
   // Terminal prose here is double-writing — keep it minimal.
@@ -233,7 +217,65 @@ async function cliNext(): Promise<void> {
   }
   console.log(`  - Use --resolve when the comment is fully addressed: \`md-annotate reply --resolve ${a.id} "..."\`.`);
   console.log(sep);
+}
+
+async function cliNext(): Promise<void> {
+  const session = process.env.ITERM_SESSION_ID;
+  if (!session) {
+    console.error('Error: $ITERM_SESSION_ID is not set');
+    process.exit(1);
+  }
+
+  const url = `http://localhost:${PORT}/api/next?session=${encodeURIComponent(session)}`;
+  const res = await fetch(url, { method: 'POST' });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    console.error(`Error: ${(err as { error: string }).error}`);
+    process.exit(1);
+  }
+
+  const data = (await res.json()) as {
+    filePath: string;
+    annotation: AnnotationBody | null;
+    remaining: number;
+  };
+
+  if (!data.annotation) {
+    console.log('No pending annotations.');
+    return;
+  }
+
+  const isQuestion = printAnnotationBody(data.filePath, data.annotation);
+  printAnnotationInstructions(data.annotation, isQuestion);
   console.log(`Remaining: ${data.remaining}`);
+}
+
+async function cliShow(): Promise<void> {
+  const annotationId = args[1];
+  if (!annotationId) {
+    console.error('Usage: md-annotate show <annotation-id>');
+    process.exit(1);
+  }
+
+  const session = process.env.ITERM_SESSION_ID;
+  if (!session) {
+    console.error('Error: $ITERM_SESSION_ID is not set');
+    process.exit(1);
+  }
+
+  const url = `http://localhost:${PORT}/api/show?session=${encodeURIComponent(session)}&annotationId=${encodeURIComponent(annotationId)}`;
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    console.error(`Error: ${(err as { error: string }).error}`);
+    process.exit(1);
+  }
+
+  const data = (await res.json()) as { filePath: string; annotation: AnnotationBody };
+  const isQuestion = printAnnotationBody(data.filePath, data.annotation);
+  printAnnotationInstructions(data.annotation, isQuestion);
 }
 
 async function cliStatus(): Promise<void> {
@@ -380,6 +422,11 @@ if (args[0] === 'open') {
     console.error(`Error: ${err.message}`);
     process.exit(1);
   });
+} else if (args[0] === 'show') {
+  cliShow().catch((err) => {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  });
 } else {
 
 // --- Daemon / open-file mode ---
@@ -393,6 +440,7 @@ Subcommands:
   md-annotate reply [--resolve] <id> "text"   Reply to an annotation
   md-annotate resolve <id>                     Resolve an annotation
   md-annotate next                              Get next pending annotation (marks working)
+  md-annotate show <id>                        Reprint an annotation's full body (read-only)
   md-annotate start <id>                       Mark annotation as being worked on
   md-annotate end <id>                         Clear working state
   md-annotate status                           Show pending annotation summary

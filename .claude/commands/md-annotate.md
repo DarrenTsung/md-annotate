@@ -15,6 +15,8 @@ After reading the annotation, decide how to handle it. Always reply with `md-ann
 
 When in doubt, don't resolve. The user can always resolve it themselves in the UI.
 
+If the `next` output has scrolled off and you need to re-read the annotation you're working on, run `md-annotate show <id>` — it reprints the full body (context, selected text, comments) without changing the working state.
+
 After handling one annotation, run `md-annotate next` again to get the next one. Repeat until there are no more pending annotations.
 
 Do not edit the `.annotations.json` sidecar file directly — always use the CLI commands.
