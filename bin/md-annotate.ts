@@ -188,7 +188,8 @@ function printAnnotationBody(filePath: string, a: AnnotationBody): boolean {
       console.log(`    ${line}`);
     }
     console.log(sep);
-    console.log(`Selected text: ${a.selectedText}`);
+    console.log(`Selected text:`);
+    console.log(`    ${a.selectedText}`);
     console.log(sep);
   }
   console.log(`Comments:`);
@@ -490,6 +491,11 @@ if (fileArg) {
 // Start the Vite dev server (with API + WS embedded via plugin)
 const server = await createServer({
   configFile: path.resolve(import.meta.dirname, '../vite.config.ts'),
+  // logLevel 'warn': suppress Vite's info-level dev-server chatter ("vite ready",
+  // HMR updates, "optimized dependencies") that otherwise interleaves with the CLI
+  // subcommands' stdout — you'd have to grep it out downstream, which risks eating
+  // real content lines. Warnings + errors still surface.
+  logLevel: 'warn',
   // strictPort: refuse to start if `port` is already in use, instead of silently
   // falling back to a random port (which would make the CLI subcommands talk to
   // the wrong server).
