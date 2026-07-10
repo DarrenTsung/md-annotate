@@ -1,6 +1,8 @@
 import { execFile } from 'child_process';
 import type { Annotation } from '../../shared/types.js';
 
+const SUBMIT_DELAY_SECONDS = 0.2;
+
 interface SessionQueue {
   timer: ReturnType<typeof setTimeout> | null;
   pending: Array<{ annotation: Annotation; filePath: string; sidecarPath: string }>;
@@ -120,6 +122,7 @@ tell application "iTerm"
                         if unique ID of aSession is "${uuid}" then
                             tell aSession
                                 write text "${escaped}" newline NO
+                                delay ${SUBMIT_DELAY_SECONDS}
                                 write text ""
                             end tell
                             return
