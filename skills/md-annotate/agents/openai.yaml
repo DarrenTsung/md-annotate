@@ -1,0 +1,4 @@
+interface:
+  display_name: "md-annotate"
+  short_description: "Review Markdown inline with an agent"
+  default_prompt: "Use $md-annotate to open this Markdown file for inline review."
