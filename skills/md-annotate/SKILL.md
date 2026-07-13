@@ -36,7 +36,7 @@ Use the local `md-annotate` daemon and CLI to conduct browser-based inline revie
    md-annotate open <file.md>
    ```
 
-   If the command reports that the daemon is not running, start `md-annotate --no-open` in a persistent/background terminal session, wait for port 3456 to become ready, and retry `open`. Do not start a second daemon when port 3456 is already serving md-annotate.
+   If the command reports that the daemon is not running, run `md-annotate daemon restart`, wait for port 3456 to become ready, and retry `open`. If the LaunchAgent is not installed, run `md-annotate daemon install` instead. Do not start a second daemon when port 3456 is already serving md-annotate.
 4. Tell the user the annotation UI is open. Wait for either a `[md-annotate]` notification or an explicit message that they added comments.
 
 ## Handle annotation notifications

@@ -20,19 +20,28 @@ https://github.com/user-attachments/assets/26def228-63a3-47b4-a444-a38e56474a15
 ```bash
 npm install
 npm link
+md-annotate daemon install
 ```
+
+The macOS LaunchAgent starts md-annotate at login and restarts it after a crash. It waits at least 10 seconds between restart attempts if startup repeatedly fails.
 
 ## Usage
 
 ```bash
-# Start the daemon
+# Open a file
+md-annotate open ./path/to/file.md
+
+# Manage the auto-restarting daemon
+md-annotate daemon status
+md-annotate daemon restart
+md-annotate daemon uninstall
+
+# Run in the foreground instead of using the LaunchAgent
+md-annotate daemon uninstall
 md-annotate
 
-# Start and open a file
+# Or start in the foreground and open a file
 md-annotate test.md
-
-# Open a file (daemon must be running)
-md-annotate open ./path/to/file.md
 ```
 
 ### Claude Code CLI

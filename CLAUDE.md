@@ -28,10 +28,18 @@ Google Docs-style inline annotation tool for markdown files with Claude Code int
 ## Running
 
 ```bash
-# Start the daemon (no file arg needed)
+# Install the auto-restarting per-user LaunchAgent (recommended)
+md-annotate daemon install
+
+# Inspect or restart the LaunchAgent
+md-annotate daemon status
+md-annotate daemon restart
+
+# Or run the daemon in the foreground
+md-annotate daemon uninstall
 md-annotate
 
-# Or start daemon and open a file
+# Start the foreground daemon and open a file
 md-annotate test.md
 
 # Open a file (daemon must be running, resolves relative paths)
@@ -65,9 +73,11 @@ npm run dev
 
 ## Using with Claude Code
 
-The `/md-annotate` skill runs `md-annotate open <file>` which resolves the path to absolute and opens the browser with the file path and `$ITERM_SESSION_ID`. The daemon must be running first.
+The `/md-annotate` skill runs `md-annotate open <file>` which resolves the path to absolute and opens the browser with the file path and `$ITERM_SESSION_ID`. The per-user LaunchAgent normally keeps the daemon running.
 
 ## Testing
+
+Run `npm run test:launch-agent` for an isolated smoke test of install, crash recovery, restart, status, and uninstall. It uses a temporary label, port, and plist directory without touching the real daemon.
 
 ### E2E browser tests
 
@@ -90,8 +100,8 @@ These use AppleScript to manage iTerm sessions for testing the Claude integratio
 
 Typical test workflow:
 ```bash
-# 1. Start daemon if not already running
-md-annotate &
+# 1. Ensure the managed daemon is running
+md-annotate daemon status || md-annotate daemon install
 
 # 2. Open annotation UI for a file
 open "http://localhost:3456?file=$(pwd)/test.md&session=$ITERM_SESSION_ID"

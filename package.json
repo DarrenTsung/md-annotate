@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsx bin/md-annotate.ts",
     "start": "tsx bin/md-annotate.ts",
+    "test:launch-agent": "./scripts/test-launch-agent.sh",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

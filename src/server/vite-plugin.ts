@@ -71,13 +71,14 @@ export function mdAnnotatePlugin(): Plugin {
         // Non-/ws upgrades fall through to Vite's HMR handler
       });
 
-      // Graceful shutdown
-      process.on('SIGINT', () => {
-        console.log('\nShutting down...');
+      const shutdown = () => {
+        console.log('Shutting down...');
         fileManager.shutdown();
         wss.close();
         process.exit(0);
-      });
+      };
+      process.once('SIGINT', shutdown);
+      process.once('SIGTERM', shutdown);
     },
   };
 }

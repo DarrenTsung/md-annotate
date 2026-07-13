@@ -2,6 +2,7 @@
 
 import path from 'path';
 import fs from 'fs';
+import { spawnSync } from 'node:child_process';
 import open from 'open';
 import { createServer } from 'vite';
 
@@ -338,6 +339,16 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(diff / 86400000)}d ago`;
 }
 
+function cliDaemon(): void {
+  const script = path.resolve(import.meta.dirname, '../scripts/launch-agent.sh');
+  const result = spawnSync(script, args.slice(1), { stdio: 'inherit' });
+  if (result.error) {
+    console.error(`Error: ${result.error.message}`);
+    process.exit(1);
+  }
+  process.exit(result.status ?? 1);
+}
+
 async function cliOpen(): Promise<void> {
   const fileArgs = args.slice(1);
   if (fileArgs.length === 0) {
@@ -371,12 +382,18 @@ async function cliOpen(): Promise<void> {
       if (session) qs.set('session', session);
       res = await fetch(`http://localhost:${PORT}/api/file?${qs.toString()}`);
     } catch {
-      console.error(`Error: daemon is not running on port ${PORT}. Start it with: md-annotate`);
+      console.error(
+        `Error: daemon is not running on port ${PORT}. ` +
+          'Run: md-annotate daemon restart (or daemon install if it is not installed)'
+      );
       process.exit(1);
     }
     if (!res.ok) {
       // Some other service is on this port, or the daemon is unhealthy.
-      console.error(`Error: daemon is not running on port ${PORT} (got HTTP ${res.status}). Start it with: md-annotate`);
+      console.error(
+        `Error: daemon is not running on port ${PORT} (got HTTP ${res.status}). ` +
+          'Run: md-annotate daemon restart (or daemon install if it is not installed)'
+      );
       process.exit(1);
     }
 
@@ -428,6 +445,8 @@ if (args[0] === 'open') {
     console.error(`Error: ${err.message}`);
     process.exit(1);
   });
+} else if (args[0] === 'daemon') {
+  cliDaemon();
 } else {
 
 // --- Daemon / open-file mode ---
@@ -445,6 +464,7 @@ Subcommands:
   md-annotate start <id>                       Mark annotation as being worked on
   md-annotate end <id>                         Clear working state
   md-annotate status                           Show pending annotation summary
+  md-annotate daemon <action>                  Manage the auto-restarting LaunchAgent
 
 Daemon mode:
   md-annotate              Start the daemon (no file required)
