@@ -140,7 +140,7 @@ stop_unmanaged_daemon() {
     fi
   done
 
-  echo "Stopping existing foreground md-annotate daemon..."
+  echo "Stopping existing foreground md-annotate daemon (pid $pids)..." >&2
   while IFS= read -r pid; do
     [[ -n "$pid" ]] && kill "$pid"
   done <<< "$pids"
@@ -167,6 +167,8 @@ write_plist() {
   /usr/bin/plutil -insert ProgramArguments.8 -string "--port" "$target"
   /usr/bin/plutil -insert ProgramArguments.9 -string "$PORT" "$target"
   /usr/bin/plutil -insert WorkingDirectory -string "$PACKAGE_DIR" "$target"
+  /usr/bin/plutil -insert EnvironmentVariables -xml '<dict/>' "$target"
+  /usr/bin/plutil -insert EnvironmentVariables.MD_ANNOTATE_PORT -string "$PORT" "$target"
   /usr/bin/plutil -insert RunAtLoad -bool true "$target"
   /usr/bin/plutil -insert KeepAlive -bool true "$target"
   /usr/bin/plutil -insert ThrottleInterval -integer 10 "$target"
@@ -206,7 +208,9 @@ run_agent() {
   shift
 
   rotate_error_log "$error_log"
-  exec "$@" 2> >(bounded_error_log "$error_log")
+  exec 2> >(bounded_error_log "$error_log")
+  stop_unmanaged_daemon
+  exec "$@"
 }
 
 print_failure_help() {

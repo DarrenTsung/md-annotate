@@ -33,6 +33,7 @@ export MD_ANNOTATE_LOG_DIR="$TEST_DIR/Logs"
 foreground_pid=""
 managed_pid=""
 restarted_pid=""
+reclaimed_pid=""
 kickstarted_pid=""
 
 listener_pid() {
@@ -65,7 +66,7 @@ cleanup() {
     launchctl bootout "$SERVICE_TARGET" || true
   fi
   local pid
-  for pid in "$foreground_pid" "$managed_pid" "$restarted_pid" "$kickstarted_pid"; do
+  for pid in "$foreground_pid" "$managed_pid" "$restarted_pid" "$reclaimed_pid" "$kickstarted_pid"; do
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
     fi
@@ -133,9 +134,53 @@ if ! restarted_pid="$(wait_for_new_pid "$managed_pid")"; then
   exit 1
 fi
 
+launchctl bootout "$SERVICE_TARGET"
+for _ in {1..50}; do
+  if ! launchctl print "$SERVICE_TARGET" >/dev/null 2>&1 \
+    && [[ -z "$(listener_pid)" ]]; then
+    break
+  fi
+  sleep 0.1
+done
+if launchctl print "$SERVICE_TARGET" >/dev/null 2>&1 \
+  || [[ -n "$(listener_pid)" ]]; then
+  echo "Managed daemon did not stop before the collision test." >&2
+  exit 1
+fi
+
+"$NODE_BIN" --import "$TSX_LOADER" "$ENTRYPOINT" --no-open --port "$PORT" \
+  >"$TEST_DIR/foreground/stdout.log" 2>"$TEST_DIR/foreground/stderr.log" &
+foreground_pid=$!
+for _ in {1..50}; do
+  is_ready && break
+  sleep 0.1
+done
+if ! is_ready; then
+  echo "Collision daemon did not become ready." >&2
+  exit 1
+fi
+
+launchctl bootstrap "$DOMAIN" "$MD_ANNOTATE_LAUNCH_AGENTS_DIR/$LABEL.plist"
+if ! reclaimed_pid="$(wait_for_new_pid "$foreground_pid")"; then
+  echo "Managed daemon did not reclaim the port from the foreground daemon." >&2
+  lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >&2 || true
+  ps -axo pid=,ppid=,stat=,command= \
+    | awk -v port="$PORT" 'index($0, "--port " port) { print }' >&2 || true
+  launchctl print "$SERVICE_TARGET" >&2 || true
+  if [[ -f "$MD_ANNOTATE_LOG_DIR/md-annotate.error.log" ]]; then
+    echo "Error log:" >&2
+    tail -100 "$MD_ANNOTATE_LOG_DIR/md-annotate.error.log" >&2
+  fi
+  exit 1
+fi
+if kill -0 "$foreground_pid" 2>/dev/null; then
+  echo "Foreground daemon remained running after the managed daemon reclaimed the port." >&2
+  exit 1
+fi
+
 "$CLI" daemon restart
 kickstarted_pid="$(listener_pid)"
-if [[ -z "$kickstarted_pid" || "$kickstarted_pid" == "$restarted_pid" ]]; then
+if [[ -z "$kickstarted_pid" || "$kickstarted_pid" == "$reclaimed_pid" ]]; then
   echo "Restart did not replace the managed daemon." >&2
   exit 1
 fi
@@ -154,4 +199,4 @@ if [[ -n "$(listener_pid)" ]]; then
   exit 1
 fi
 
-echo "LaunchAgent smoke test passed ($managed_pid -> $restarted_pid -> $kickstarted_pid)."
+echo "LaunchAgent smoke test passed ($managed_pid -> $restarted_pid -> $reclaimed_pid -> $kickstarted_pid)."
