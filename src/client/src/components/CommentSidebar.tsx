@@ -52,46 +52,83 @@ export function CommentSidebar({
   const prevStatusRef = useRef<Map<string, string>>(new Map());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
+  const clearRecentlyResolved = useCallback((id: string) => {
+    const timer = timersRef.current.get(id);
+    if (timer) clearTimeout(timer);
+    timersRef.current.delete(id);
+    setRecentlyResolved((current) => {
+      if (!current.has(id)) return current;
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     const prev = prevStatusRef.current;
+    const currentIds = new Set<string>();
     for (const a of annotations) {
+      currentIds.add(a.id);
       const wasOpen = prev.get(a.id) === 'open';
       if (wasOpen && a.status === 'resolved') {
+        clearRecentlyResolved(a.id);
         setRecentlyResolved((s) => new Set(s).add(a.id));
-        const timer = setTimeout(() => {
-          setRecentlyResolved((s) => {
-            const next = new Set(s);
-            next.delete(a.id);
-            return next;
-          });
-          timersRef.current.delete(a.id);
-        }, RECENTLY_RESOLVED_MS);
+        const timer = setTimeout(
+          () => clearRecentlyResolved(a.id),
+          RECENTLY_RESOLVED_MS
+        );
         timersRef.current.set(a.id, timer);
+      } else if (prev.get(a.id) === 'resolved' && a.status !== 'resolved') {
+        clearRecentlyResolved(a.id);
       }
       prev.set(a.id, a.status);
     }
-    return () => {
-      for (const t of timersRef.current.values()) clearTimeout(t);
-    };
-  }, [annotations]);
+
+    for (const id of prev.keys()) {
+      if (currentIds.has(id)) continue;
+      clearRecentlyResolved(id);
+      prev.delete(id);
+    }
+  }, [annotations, clearRecentlyResolved]);
+
+  useEffect(
+    () => () => {
+      for (const timer of timersRef.current.values()) clearTimeout(timer);
+      timersRef.current.clear();
+      prevStatusRef.current.clear();
+    },
+    []
+  );
 
   const handleManualCollapse = useCallback(
     (id: string) => {
-      const timer = timersRef.current.get(id);
-      if (timer) {
-        clearTimeout(timer);
-        timersRef.current.delete(id);
-      }
-      setRecentlyResolved((s) => {
-        if (!s.has(id)) return s;
-        const next = new Set(s);
-        next.delete(id);
-        return next;
-      });
+      clearRecentlyResolved(id);
       if (activeAnnotationId === id) onSetActive(null);
     },
-    [activeAnnotationId, onSetActive]
+    [activeAnnotationId, clearRecentlyResolved, onSetActive]
   );
+
+  useEffect(() => {
+    if (tab !== 'all' || !activeAnnotationId) return;
+    const annotationId = activeAnnotationId;
+    const active = annotations.find((a) => a.id === annotationId);
+    if (active?.status !== 'resolved') return;
+
+    function handleMouseDown(event: MouseEvent) {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('.comment-thread')?.getAttribute('data-annotation-id') ===
+          annotationId
+      ) {
+        return;
+      }
+      handleManualCollapse(annotationId);
+    }
+
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [tab, activeAnnotationId, annotations, handleManualCollapse]);
 
   // Sort by position in document
   const sorted = [...annotations].sort(
@@ -264,7 +301,11 @@ function ResolvedSection({
           annotation={annotation}
           isActive={activeAnnotationId === annotation.id}
           forceExpanded={recentlyResolved.has(annotation.id)}
-          onActivate={() => onSetActive(activeAnnotationId === annotation.id ? null : annotation.id)}
+          onActivate={() =>
+            activeAnnotationId === annotation.id
+              ? onManualCollapse(annotation.id)
+              : onSetActive(annotation.id)
+          }
           onReply={(text, kind) => onReply(annotation.id, text, kind)}
           onResolve={() => onResolve(annotation.id)}
           onReopen={() => onReopen(annotation.id)}
