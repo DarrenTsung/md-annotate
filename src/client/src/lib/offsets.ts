@@ -8,12 +8,16 @@
  * 3. Fuzzy-match the selected text in the raw markdown near the estimated position
  */
 
+import type { MermaidLabelTarget } from '@shared/types.js';
+import { findMermaidBlockAnchor } from './mermaid.js';
+
 export interface SourceOffset {
   startOffset: number;
   endOffset: number;
   selectedText: string;
   contextBefore: string;
   contextAfter: string;
+  mermaidLabel?: MermaidLabelTarget;
 }
 
 const CONTEXT_LENGTH = 30;
@@ -21,11 +25,11 @@ const CONTEXT_LENGTH = 30;
 /**
  * Find the nearest ancestor (or self) element that has data-source-start.
  */
-function findSourceElement(node: Node): HTMLElement | null {
+function findSourceElement(node: Node): Element | null {
   let el: Node | null = node;
   while (el) {
     if (
-      el instanceof HTMLElement &&
+      el instanceof Element &&
       el.hasAttribute('data-source-start')
     ) {
       return el;
@@ -33,6 +37,11 @@ function findSourceElement(node: Node): HTMLElement | null {
     el = el.parentElement;
   }
   return null;
+}
+
+function findClosestElement(node: Node, selector: string): Element | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  return element?.closest(selector) ?? null;
 }
 
 /**
@@ -281,11 +290,97 @@ export function selectionToSourceOffset(
   const selectedText = selection.toString();
   if (!selectedText.trim()) return null;
 
+  const startMermaidLabel = findClosestElement(
+    range.startContainer,
+    '[data-mermaid-label]'
+  );
+  const endMermaidLabel = findClosestElement(
+    range.endContainer,
+    '[data-mermaid-label]'
+  );
+  if (startMermaidLabel || endMermaidLabel) {
+    if (!startMermaidLabel || startMermaidLabel !== endMermaidLabel) return null;
+    const diagram = startMermaidLabel.closest(
+      '.mermaid-diagram[data-source-start][data-source-end]'
+    );
+    if (!diagram) return null;
+
+    const startOffset = parseInt(
+      diagram.getAttribute('data-source-start') || '',
+      10
+    );
+    const endOffset = parseInt(
+      diagram.getAttribute('data-source-end') || '',
+      10
+    );
+    const occurrence = parseInt(
+      startMermaidLabel.getAttribute('data-mermaid-label-occurrence') || '',
+      10
+    );
+    if (
+      !Number.isFinite(startOffset) ||
+      !Number.isFinite(endOffset) ||
+      !Number.isFinite(occurrence) ||
+      startOffset >= endOffset
+    ) {
+      return null;
+    }
+
+    const labelText =
+      startMermaidLabel.getAttribute('data-mermaid-label-text') || '';
+    const selectionStart = getTextOffsetInElement(
+      startMermaidLabel,
+      range.startContainer,
+      range.startOffset
+    );
+    const selectionEnd = getTextOffsetInElement(
+      startMermaidLabel,
+      range.endContainer,
+      range.endOffset
+    );
+    if (selectionStart >= selectionEnd || selectionEnd > labelText.length) {
+      return null;
+    }
+
+    const anchor = findMermaidBlockAnchor(
+      rawMarkdown,
+      startOffset,
+      endOffset
+    );
+    if (!anchor) return null;
+
+    return {
+      startOffset: anchor.start,
+      endOffset: anchor.end,
+      selectedText: anchor.text,
+      contextBefore: rawMarkdown.slice(
+        Math.max(0, anchor.start - CONTEXT_LENGTH),
+        anchor.start
+      ),
+      contextAfter: rawMarkdown.slice(
+        anchor.end,
+        anchor.end + CONTEXT_LENGTH
+      ),
+      mermaidLabel: {
+        text: labelText,
+        occurrence,
+        selectionStart,
+        selectionEnd,
+      },
+    };
+  }
+
   // Find source-offset ancestors for start and end
   const startEl = findSourceElement(range.startContainer);
   const endEl = findSourceElement(range.endContainer);
 
   if (!startEl) return null;
+  if (
+    startEl.classList.contains('mermaid-diagram') ||
+    endEl?.classList.contains('mermaid-diagram')
+  ) {
+    return null;
+  }
 
   const startBlockStart = parseInt(startEl.getAttribute('data-source-start') || '0', 10);
   const startBlockEnd = parseInt(startEl.getAttribute('data-source-end') || String(rawMarkdown.length), 10);

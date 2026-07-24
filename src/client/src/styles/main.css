@@ -435,6 +435,11 @@ body {
   height: auto;
 }
 
+.mermaid-diagram [data-mermaid-label] {
+  cursor: text;
+  user-select: text;
+}
+
 /* Annotation highlights */
 .annotation-highlight {
   background-color: var(--highlight-bg);
@@ -513,6 +518,69 @@ body {
   background-color: var(--highlight-active);
   border-radius: 2px;
   animation: highlight-fade-in 0.2s ease-out;
+}
+
+.mermaid-diagram tspan.annotation-highlight,
+.mermaid-diagram tspan.pending-highlight {
+  paint-order: stroke fill;
+  stroke: var(--highlight-bg);
+  stroke-linejoin: round;
+  stroke-width: 0.5em;
+}
+
+.mermaid-diagram tspan.annotation-highlight.resolved {
+  stroke: var(--highlight-resolved);
+}
+
+.mermaid-diagram tspan.annotation-highlight.stale {
+  stroke: rgba(254, 243, 181, 0.4);
+}
+
+.mermaid-diagram tspan.annotation-highlight:hover,
+.mermaid-diagram tspan.annotation-highlight.active,
+.mermaid-diagram tspan.pending-highlight {
+  stroke: var(--highlight-active);
+}
+
+.mermaid-diagram tspan.annotation-highlight.resolved.active {
+  stroke: var(--highlight-resolved);
+}
+
+@keyframes mermaid-highlight-working {
+  0%, 100% { stroke: var(--highlight-bg); }
+  50% { stroke: #e8d5ff; }
+}
+
+@keyframes mermaid-highlight-blink {
+  0%, 50%, 100% { stroke: var(--highlight-active); }
+  25%, 75% { stroke: #ffd700; }
+}
+
+@keyframes mermaid-highlight-blink-resolved {
+  0%, 50%, 100% { stroke: var(--highlight-resolved); }
+  25%, 75% { stroke: #d4d4d4; }
+}
+
+.mermaid-diagram tspan.annotation-highlight.working {
+  animation: mermaid-highlight-working 2s ease-in-out infinite;
+}
+
+.mermaid-diagram tspan.annotation-highlight.highlight-blink {
+  animation: mermaid-highlight-blink 0.8s ease-in-out;
+}
+
+.mermaid-diagram tspan.annotation-highlight.resolved.highlight-blink {
+  animation: mermaid-highlight-blink-resolved 0.8s ease-in-out;
+}
+
+.mermaid-missing-highlight {
+  display: block;
+  margin: 0 auto 8px;
+  padding: 4px 8px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  border: 1px dashed currentColor;
 }
 
 /* Diff overlay */

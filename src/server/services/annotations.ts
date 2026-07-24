@@ -101,6 +101,7 @@ export class AnnotationService {
       status: 'open',
       stale: false,
       ...(req.embedLabel ? { embedLabel: req.embedLabel } : {}),
+      ...(req.mermaidLabel ? { mermaidLabel: req.mermaidLabel } : {}),
       sentToClaude: false,
       working: false,
       createdAt: now,

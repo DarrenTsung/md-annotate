@@ -4,6 +4,7 @@ import morphdom from 'morphdom';
 import type { Annotation, CommentKind, DiffHunk } from '@shared/types.js';
 import { applyHighlights, applyPendingHighlight } from '../lib/highlight.js';
 import { applyDiffOverlay } from '../lib/diffOverlay.js';
+import { annotateMermaidLabels } from '../lib/mermaid.js';
 import { useTextSelection } from '../hooks/useTextSelection.js';
 import { SelectionPopover } from './SelectionPopover.js';
 import { Minimap } from './Minimap.js';
@@ -125,6 +126,7 @@ export function MarkdownViewer({
   // The scrollable column wrapping the article — this scrolls, not the window.
   const scrollerRef = useRef<HTMLDivElement>(null);
   const { selection, clearSelection } = useTextSelection(containerRef, rawMarkdown);
+  const [mermaidRenderVersion, setMermaidRenderVersion] = useState(0);
   // Popover state for commenting on an embedded HTML widget (which has no
   // selectable text of its own — the comment anchors to its source block).
   const [embedSel, setEmbedSel] = useState<{ offset: SourceOffset; rect: DOMRect; embedLabel: string } | null>(null);
@@ -224,7 +226,7 @@ export function MarkdownViewer({
     const cleanup = applyHighlights(container, annotations, displayMarkdown);
     if (scroller) scroller.scrollTop = scrollY;
     return cleanup;
-  }, [annotations, displayHtml, displayMarkdown]);
+  }, [annotations, displayHtml, displayMarkdown, mermaidRenderVersion]);
 
   // Toggle active class on marks — separate from highlight injection so
   // clicking a comment never tears down / re-creates the mark elements.
@@ -233,25 +235,31 @@ export function MarkdownViewer({
     if (!container) return;
 
     // Clear any previous active
-    container.querySelectorAll('mark.active').forEach((m) => m.classList.remove('active'));
+    container
+      .querySelectorAll('.annotation-highlight.active')
+      .forEach((m) => m.classList.remove('active'));
     container.querySelectorAll('.html-embed.active').forEach((e) => e.classList.remove('active'));
 
     if (activeAnnotationId) {
       container
-        .querySelectorAll(`mark[data-annotation-id="${activeAnnotationId}"]`)
+        .querySelectorAll(
+          `.annotation-highlight[data-annotation-id="${activeAnnotationId}"]`
+        )
         .forEach((m) => m.classList.add('active'));
       // Embedded widgets have no <mark>; highlight the embed block instead.
       const embed = findEmbedForAnnotation(container, annotations, activeAnnotationId);
       embed?.classList.add('active');
     }
-  }, [activeAnnotationId, annotations, displayHtml]);
+  }, [activeAnnotationId, annotations, displayHtml, mermaidRenderVersion]);
 
   // Scroll to and blink the active highlight when a comment is selected
   useEffect(() => {
     if (!activeAnnotationId) return;
 
     const mark =
-      document.querySelector(`mark[data-annotation-id="${activeAnnotationId}"]`) ||
+      document.querySelector(
+        `.annotation-highlight[data-annotation-id="${activeAnnotationId}"]`
+      ) ||
       findEmbedForAnnotation(containerRef.current, annotations, activeAnnotationId);
     if (!mark) return;
 
@@ -273,7 +281,7 @@ export function MarkdownViewer({
       clearTimeout(timer);
       mark.classList.remove('highlight-blink');
     };
-  }, [activeAnnotationId, annotations]);
+  }, [activeAnnotationId, annotations, mermaidRenderVersion]);
 
   // Highlight the pending selection while the popover is open
   useLayoutEffect(() => {
@@ -287,12 +295,13 @@ export function MarkdownViewer({
       selection.offset.startOffset,
       selection.offset.endOffset,
       selection.offset.selectedText,
-      displayMarkdown
+      displayMarkdown,
+      selection.offset.mermaidLabel
     );
     // DOM manipulation can shift scroll; restore it
     if (scroller) scroller.scrollTop = scrollY;
     return cleanup;
-  }, [selection]);
+  }, [selection, displayMarkdown, mermaidRenderVersion]);
 
   // Apply diff overlay when hunks are available
   useLayoutEffect(() => {
@@ -304,7 +313,7 @@ export function MarkdownViewer({
     const cleanup = applyDiffOverlay(container, shownDiffHunks);
     if (scroller) scroller.scrollTop = scrollY;
     return cleanup;
-  }, [shownDiffHunks, displayHtml]);
+  }, [shownDiffHunks, displayHtml, mermaidRenderVersion]);
 
   // Render mermaid diagrams after HTML is injected
   useEffect(() => {
@@ -317,6 +326,7 @@ export function MarkdownViewer({
     let cancelled = false;
 
     (async () => {
+      let renderedAny = false;
       for (const code of codeBlocks) {
         if (cancelled) return;
         const pre = code.parentElement;
@@ -327,21 +337,40 @@ export function MarkdownViewer({
         try {
           const { svg } = await mermaid.render(id, source);
           if (cancelled) return;
+          const liveSelection = window.getSelection();
+          if (
+            liveSelection &&
+            !liveSelection.isCollapsed &&
+            liveSelection.rangeCount > 0 &&
+            pre.contains(liveSelection.getRangeAt(0).commonAncestorContainer)
+          ) {
+            continue;
+          }
           const wrapper = document.createElement('div');
           wrapper.className = 'mermaid-diagram';
-          // Copy source offset attributes so highlights/selection still work
-          if (pre.dataset.sourceStart) wrapper.dataset.sourceStart = pre.dataset.sourceStart;
-          if (pre.dataset.sourceEnd) wrapper.dataset.sourceEnd = pre.dataset.sourceEnd;
           wrapper.innerHTML = svg;
+          const sourceStartAttr = code.getAttribute('data-source-start');
+          const sourceEndAttr = code.getAttribute('data-source-end');
+          if (sourceStartAttr !== null && sourceEndAttr !== null) {
+            const sourceStart = Number(sourceStartAttr);
+            const sourceEnd = Number(sourceEndAttr);
+            if (Number.isFinite(sourceStart) && Number.isFinite(sourceEnd)) {
+              annotateMermaidLabels(wrapper, sourceStart, sourceEnd);
+            }
+          }
           pre.replaceWith(wrapper);
+          renderedAny = true;
         } catch {
           // Leave the code block as-is if rendering fails
         }
       }
+      if (renderedAny && !cancelled) {
+        setMermaidRenderVersion((version) => version + 1);
+      }
     })();
 
     return () => { cancelled = true; };
-  }, [displayHtml]);
+  }, [displayHtml, selection]);
 
   // Open the comment popover for an embedded widget. The comment anchors to
   // the widget's source block, but the popover is positioned next to the click
@@ -462,13 +491,22 @@ export function MarkdownViewer({
     if (!selection) return;
 
     function handleKeyDown(e: KeyboardEvent) {
+      const mermaidSelectionText = selection!.offset.mermaidLabel
+        ? selection!.offset.mermaidLabel.text.slice(
+            selection!.offset.mermaidLabel.selectionStart,
+            selection!.offset.mermaidLabel.selectionEnd
+          )
+        : null;
       if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
-        navigator.clipboard.writeText(selection!.offset.selectedText);
+        navigator.clipboard.writeText(
+          mermaidSelectionText ?? selection!.offset.selectedText
+        );
         clearSelection();
         return;
       }
 
       if ((e.metaKey || e.ctrlKey) && (e.key === 'Delete' || e.key === 'Backspace')) {
+        if (selection!.offset.mermaidLabel) return;
         // Once the user has typed a comment, Cmd/Ctrl+Backspace is a normal
         // line-edit shortcut in the comment box — don't hijack it to delete
         // the document. A fresh (empty) selection still deletes.
@@ -523,7 +561,7 @@ export function MarkdownViewer({
       }
 
       // Annotation highlight clicks
-      const mark = target.closest('mark[data-annotation-id]');
+      const mark = target.closest('.annotation-highlight[data-annotation-id]');
       if (mark) {
         const id = mark.getAttribute('data-annotation-id');
         if (id) onHighlightClick(id);
@@ -586,7 +624,14 @@ export function MarkdownViewer({
       {selection && (
         <SelectionPopover
           rect={selection.rect}
-          selectedText={selection.offset.selectedText}
+          selectedText={
+            selection.offset.mermaidLabel
+              ? selection.offset.mermaidLabel.text.slice(
+                  selection.offset.mermaidLabel.selectionStart,
+                  selection.offset.mermaidLabel.selectionEnd
+                )
+              : selection.offset.selectedText
+          }
           onSubmit={handleSubmitComment}
           onCancel={clearSelection}
         />

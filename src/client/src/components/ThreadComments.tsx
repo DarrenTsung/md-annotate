@@ -42,11 +42,16 @@ export function ThreadComments({ annotation, onQuoteClick }: ThreadCommentsProps
           </div>
           {index === 0 && (
             <blockquote
-              className={`comment-quote${annotation.embedLabel ? ' embed-quote' : ''}`}
+              className={`comment-quote${annotation.embedLabel || annotation.mermaidLabel ? ' embed-quote' : ''}`}
               onClick={onQuoteClick}
               title="Scroll to highlight"
             >
-              {annotation.embedLabel
+              {annotation.mermaidLabel
+                ? `◇ ${annotation.mermaidLabel.text.slice(
+                    annotation.mermaidLabel.selectionStart,
+                    annotation.mermaidLabel.selectionEnd
+                  )}`
+                : annotation.embedLabel
                 ? `🧩 ${annotation.embedLabel}`
                 : annotation.selectedText.length > 60
                 ? annotation.selectedText.slice(0, 57) + '...'

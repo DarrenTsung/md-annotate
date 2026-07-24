@@ -8,8 +8,9 @@
  * by markdown syntax stripping.
  */
 
-import type { Annotation } from '@shared/types.js';
+import type { Annotation, MermaidLabelTarget } from '@shared/types.js';
 import { buildSourceMap } from './offsets.js';
+import { findMermaidLabelIndex } from './mermaid.js';
 
 interface HighlightRange {
   annotationId: string;
@@ -30,19 +31,42 @@ export function applyHighlights(
   annotations: Annotation[],
   rawMarkdown?: string
 ): () => void {
-  const ranges = annotations.map(
-    (a): HighlightRange => ({
-      annotationId: a.id,
-      startOffset: a.startOffset,
-      endOffset: a.endOffset,
-      selectedText: a.selectedText,
-      status: a.status,
-      stale: a.stale,
-      working: a.working,
-    })
+  const ranges = annotations
+    .filter((annotation) => !annotation.mermaidLabel)
+    .map(
+      (a): HighlightRange => ({
+        annotationId: a.id,
+        startOffset: a.startOffset,
+        endOffset: a.endOffset,
+        selectedText: a.selectedText,
+        status: a.status,
+        stale: a.stale,
+        working: a.working,
+      })
+    );
+  const mermaidRanges = annotations.flatMap(
+    (annotation): MermaidHighlightRange[] =>
+      annotation.mermaidLabel
+        ? [
+            {
+              annotationId: annotation.id,
+              startOffset: annotation.startOffset,
+              endOffset: annotation.endOffset,
+              target: annotation.mermaidLabel,
+              status: annotation.status,
+              stale: annotation.stale,
+              working: annotation.working,
+            },
+          ]
+        : []
   );
 
-  return applyHighlightRanges(container, ranges, rawMarkdown);
+  const cleanupText = applyHighlightRanges(container, ranges, rawMarkdown);
+  const cleanupMermaid = applyMermaidHighlights(container, mermaidRanges);
+  return () => {
+    cleanupMermaid();
+    cleanupText();
+  };
 }
 
 /**
@@ -54,22 +78,142 @@ export function applyPendingHighlight(
   startOffset: number,
   endOffset: number,
   selectedText?: string,
-  rawMarkdown?: string
+  rawMarkdown?: string,
+  mermaidLabel?: MermaidLabelTarget
 ): () => void {
-  return applyHighlightRanges(container, [
-    {
-      annotationId: '__pending__',
-      startOffset,
-      endOffset,
-      selectedText,
-      status: 'pending' as 'open',
-      className: 'pending-highlight',
-    },
-  ], rawMarkdown);
+  if (mermaidLabel) {
+    return applyMermaidHighlights(
+      container,
+      [
+        {
+          annotationId: '__pending__',
+          startOffset,
+          endOffset,
+          target: mermaidLabel,
+          status: 'pending',
+          working: false,
+        },
+      ],
+      'pending-highlight'
+    );
+  }
+
+  return applyHighlightRanges(
+    container,
+    [
+      {
+        annotationId: '__pending__',
+        startOffset,
+        endOffset,
+        selectedText,
+        status: 'pending' as 'open',
+        className: 'pending-highlight',
+      },
+    ],
+    rawMarkdown
+  );
 }
 
 interface HighlightRangeWithClass extends HighlightRange {
   className?: string;
+}
+
+interface MermaidHighlightRange {
+  annotationId: string;
+  startOffset: number;
+  endOffset: number;
+  target: MermaidLabelTarget;
+  status: string;
+  stale?: boolean;
+  working?: boolean;
+}
+
+function applyMermaidHighlights(
+  container: HTMLElement,
+  ranges: MermaidHighlightRange[],
+  className?: string
+): () => void {
+  const marks: Element[] = [];
+  const insertedElements: Element[] = [];
+  const diagrams = Array.from(
+    container.querySelectorAll(
+      '.mermaid-diagram[data-source-start][data-source-end]'
+    )
+  );
+
+  for (const range of ranges) {
+    const target = range.target;
+    if (range.stale) continue;
+
+    const diagram = diagrams.find((element) => {
+      const start = parseInt(
+        element.getAttribute('data-source-start') || '',
+        10
+      );
+      const end = parseInt(element.getAttribute('data-source-end') || '', 10);
+      return range.startOffset < end && range.endOffset > start;
+    });
+    if (!diagram) continue;
+
+    const labels = Array.from(
+      diagram.querySelectorAll('[data-mermaid-label]')
+    );
+    const labelIndex = findMermaidLabelIndex(
+      labels.map(
+        (element) => element.getAttribute('data-mermaid-label-text') || ''
+      ),
+      target.text,
+      target.occurrence
+    );
+    const label = labelIndex === null ? null : labels[labelIndex];
+    if (!label) {
+      const missing = document.createElement('button');
+      missing.type = 'button';
+      missing.className =
+        'annotation-highlight stale mermaid-missing-highlight';
+      missing.setAttribute('data-annotation-id', range.annotationId);
+      missing.textContent = `Comment target "${target.text.slice(
+        target.selectionStart,
+        target.selectionEnd
+      )}" not found`;
+      diagram.insertBefore(missing, diagram.firstChild);
+      insertedElements.push(missing);
+      continue;
+    }
+
+    highlightTextInElement(
+      label,
+      {
+        annotationId: range.annotationId,
+        startOffset: target.selectionStart,
+        endOffset: target.selectionEnd,
+        selectedText: target.text.slice(
+          target.selectionStart,
+          target.selectionEnd
+        ),
+        status: range.status,
+        stale: range.stale,
+        working: range.working,
+        className,
+      },
+      0,
+      marks
+    );
+  }
+
+  return () => {
+    for (const element of insertedElements) {
+      element.parentNode?.removeChild(element);
+    }
+    for (const mark of marks) {
+      const parent = mark.parentNode;
+      if (!parent) continue;
+      while (mark.firstChild) {
+        parent.insertBefore(mark.firstChild, mark);
+      }
+      parent.removeChild(mark);
+    }
+  };
 }
 
 function applyHighlightRanges(
@@ -82,12 +226,12 @@ function applyHighlightRanges(
 
   // For each range, find the block element(s) that contain it and
   // wrap the matching text in <mark> elements
-  const marks: HTMLElement[] = [];
+  const marks: Element[] = [];
 
   for (const range of ranges) {
     const blockElements = Array.from(
-      container.querySelectorAll('[data-source-start]')
-    ) as HTMLElement[];
+      container.querySelectorAll('[data-source-start]:not(.mermaid-diagram)')
+    );
 
     // Find blocks that overlap this range
     const overlapping = blockElements.filter((el) => {
@@ -136,10 +280,10 @@ function findAllOccurrences(haystack: string, needle: string): number[] {
 }
 
 function highlightTextInElement(
-  element: HTMLElement,
+  element: Element,
   range: HighlightRangeWithClass,
   blockStartOffset: number,
-  marks: HTMLElement[],
+  marks: Element[],
   rawMarkdown?: string
 ): void {
   // Collect all text nodes and build the full rendered text.
@@ -291,14 +435,21 @@ function highlightTextInElement(
     const middle = text.slice(start, end);
     const after = text.slice(end);
 
-    const mark = document.createElement('mark');
-    mark.setAttribute('data-annotation-id', range.annotationId);
-    mark.className = range.className ?? `annotation-highlight ${range.status === 'resolved' ? 'resolved' : ''} ${range.stale ? 'stale' : ''} ${range.working ? 'working' : ''}`.trim();
-    mark.textContent = middle;
-    marks.push(mark);
-
     const parent = textNode.parentNode;
     if (!parent) continue;
+
+    const isSvgText = parent instanceof SVGElement && !parent.closest('foreignObject');
+    const mark = isSvgText
+      ? document.createElementNS('http://www.w3.org/2000/svg', 'tspan')
+      : document.createElement('mark');
+    mark.setAttribute('data-annotation-id', range.annotationId);
+    mark.setAttribute(
+      'class',
+      range.className ??
+        `annotation-highlight ${range.status === 'resolved' ? 'resolved' : ''} ${range.stale ? 'stale' : ''} ${range.working ? 'working' : ''}`.trim()
+    );
+    mark.textContent = middle;
+    marks.push(mark);
 
     if (after) {
       const afterNode = document.createTextNode(after);
@@ -320,7 +471,7 @@ function highlightTextInElement(
  */
 export function getHighlightPosition(annotationId: string): number | null {
   const mark = document.querySelector(
-    `mark[data-annotation-id="${annotationId}"]`
+    `.annotation-highlight[data-annotation-id="${annotationId}"]`
   );
   if (!mark) return null;
 

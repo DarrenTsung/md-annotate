@@ -4,6 +4,16 @@ export interface AnnotationFile {
   annotations: Annotation[];
 }
 
+export interface MermaidLabelTarget {
+  /** Full rendered label text, used to find the label again after Mermaid rerenders. */
+  text: string;
+  /** Zero-based occurrence among rendered labels with the same text. */
+  occurrence: number;
+  /** Selected character range within the rendered label text. */
+  selectionStart: number;
+  selectionEnd: number;
+}
+
 export interface Annotation {
   id: string;
   selectedText: string;
@@ -21,6 +31,11 @@ export interface Annotation {
    * UI and CLI can show something meaningful instead of dumping the raw HTML.
    */
   embedLabel?: string;
+  /**
+   * Identifies a text selection inside a rendered Mermaid diagram. The source
+   * offsets anchor the containing Mermaid block; this locates the visual text.
+   */
+  mermaidLabel?: MermaidLabelTarget;
   sentToClaude: boolean;
   working: boolean;
   /** Timestamp when Claude last read this annotation's full state (via
@@ -60,6 +75,8 @@ export interface CreateAnnotationRequest {
   kind?: CommentKind;
   /** Concise widget label when the annotation targets an embedded HTML widget. */
   embedLabel?: string;
+  /** Visual label target when the annotation is on rendered Mermaid text. */
+  mermaidLabel?: MermaidLabelTarget;
 }
 
 export interface AddCommentRequest {

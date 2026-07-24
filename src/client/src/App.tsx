@@ -73,6 +73,7 @@ function AnnotationView({ filePath, session }: { filePath: string; session: stri
         commentText: comment,
         kind,
         embedLabel: opts?.embedLabel,
+        mermaidLabel: offset.mermaidLabel,
       });
       setActiveAnnotationId(annotation.id);
     },

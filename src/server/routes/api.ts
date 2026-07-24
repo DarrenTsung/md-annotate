@@ -504,9 +504,16 @@ export function createApiRouter(fileManager: FileManager): Router {
         }
 
         const lines = inProgress.map(({ filePath, annotation }) => {
-          const quote = annotation.selectedText.length > 50
-            ? annotation.selectedText.slice(0, 47) + '...'
-            : annotation.selectedText;
+          const targetText = annotation.mermaidLabel
+            ? annotation.mermaidLabel.text.slice(
+                annotation.mermaidLabel.selectionStart,
+                annotation.mermaidLabel.selectionEnd
+              )
+            : annotation.embedLabel ?? annotation.selectedText;
+          const quote =
+            targetText.length > 50
+              ? targetText.slice(0, 47) + '...'
+              : targetText;
           return `  ${annotation.id}  "${quote}"  (${filePath.split('/').pop()})`;
         });
         res.status(409).json({

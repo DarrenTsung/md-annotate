@@ -10,6 +10,7 @@
     "dev": "tsx bin/md-annotate.ts",
     "start": "tsx bin/md-annotate.ts",
     "test:launch-agent": "./scripts/test-launch-agent.sh",
+    "test:mermaid": "node --import tsx --test tests/mermaid-labels.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

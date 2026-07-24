@@ -39,7 +39,7 @@ export function CommentThread({
 
   function scrollToHighlight() {
     const mark = document.querySelector(
-      `mark[data-annotation-id="${annotation.id}"]`
+      `.annotation-highlight[data-annotation-id="${annotation.id}"]`
     );
     if (mark) {
       mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -51,9 +51,14 @@ export function CommentThread({
   const collapsed = isResolved && !isActive && !forceExpanded;
 
   if (collapsed) {
-    const quote = annotation.selectedText.length > 40
-      ? annotation.selectedText.slice(0, 37) + '...'
-      : annotation.selectedText;
+    const targetText = annotation.mermaidLabel
+      ? annotation.mermaidLabel.text.slice(
+          annotation.mermaidLabel.selectionStart,
+          annotation.mermaidLabel.selectionEnd
+        )
+      : annotation.embedLabel ?? annotation.selectedText;
+    const quote =
+      targetText.length > 40 ? targetText.slice(0, 37) + '...' : targetText;
     const firstUserComment = annotation.comments.find((c) => c.author === 'user');
     const firstMessage = firstUserComment?.text ?? '';
     const truncatedMessage = firstMessage.length > 80
@@ -154,4 +159,3 @@ export function CommentThread({
     </div>
   );
 }
-

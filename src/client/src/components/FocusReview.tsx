@@ -22,7 +22,9 @@ function scrollToAnnotation(annotation: Annotation) {
   // distances an animated scroll is disorienting.
   const opts: ScrollIntoViewOptions = { behavior: 'auto', block: 'center' };
 
-  const mark = document.querySelector(`mark[data-annotation-id="${annotation.id}"]`);
+  const mark = document.querySelector(
+    `.annotation-highlight[data-annotation-id="${annotation.id}"]`
+  );
   if (mark) {
     mark.scrollIntoView(opts);
     return;

@@ -5,6 +5,7 @@ import fs from 'fs';
 import { spawnSync } from 'node:child_process';
 import open from 'open';
 import { createServer } from 'vite';
+import type { MermaidLabelTarget } from '../src/shared/types.js';
 
 const args = process.argv.slice(2);
 const PORT = 3456;
@@ -140,6 +141,7 @@ interface AnnotationBody {
   startOffset: number;
   endOffset: number;
   embedLabel?: string;
+  mermaidLabel?: MermaidLabelTarget;
   comments: Array<{ author: string; text: string; kind?: 'comment' | 'question'; createdAt: string }>;
   createdAt: string;
 }
@@ -162,7 +164,16 @@ function printAnnotationBody(filePath: string, a: AnnotationBody): boolean {
   const content = fs.readFileSync(filePath, 'utf-8');
   const startLine = content.slice(0, a.startOffset).split('\n').length;
 
-  if (a.embedLabel) {
+  if (a.mermaidLabel) {
+    const label = a.mermaidLabel.text.slice(
+      a.mermaidLabel.selectionStart,
+      a.mermaidLabel.selectionEnd
+    );
+    console.log(sep);
+    console.log(`Target: Mermaid diagram text "${label}" (line ${startLine}).`);
+    console.log(`  Open ${filePath} around line ${startLine} to read or edit the diagram source.`);
+    console.log(sep);
+  } else if (a.embedLabel) {
     // Embedded HTML widget: the user is commenting on the whole widget, not a
     // text selection. Don't dump the raw HTML — just point Claude at it.
     console.log(sep);
@@ -304,6 +315,7 @@ async function cliStatus(): Promise<void> {
       startOffset: number;
       endOffset: number;
       embedLabel?: string;
+      mermaidLabel?: MermaidLabelTarget;
       comments: Array<{ author: string; text: string; kind?: 'comment' | 'question'; createdAt: string }>;
       working: boolean;
       createdAt: string;
@@ -319,7 +331,12 @@ async function cliStatus(): Promise<void> {
   console.log(`${data.annotations.length} pending annotation(s):\n`);
   for (const a of data.annotations) {
     const lastUserComment = [...a.comments].reverse().find((c) => c.author === 'user');
-    const text = a.embedLabel
+    const text = a.mermaidLabel
+      ? `◇ diagram: ${a.mermaidLabel.text.slice(
+          a.mermaidLabel.selectionStart,
+          a.mermaidLabel.selectionEnd
+        )}`
+      : a.embedLabel
       ? `🧩 widget: ${a.embedLabel}`
       : a.selectedText.length > 40
       ? a.selectedText.slice(0, 37) + '...'
