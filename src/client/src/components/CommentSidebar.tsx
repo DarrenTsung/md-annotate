@@ -35,6 +35,10 @@ export function CommentSidebar({
 }: CommentSidebarProps) {
   const [tab, setTab] = useState<SidebarTab>('all');
   const { isUnread, markViewed } = useViewedThreads(filePath);
+  const clickAwayArmedIdRef = useRef<string | null>(null);
+  const previousActiveAnnotationIdRef = useRef<string | null>(
+    activeAnnotationId
+  );
 
   // Mark a thread viewed whenever the user opens it (in either tab). This is
   // what drops it out of the unread review queue.
@@ -100,34 +104,87 @@ export function CommentSidebar({
     []
   );
 
+  useEffect(() => {
+    if (
+      previousActiveAnnotationIdRef.current !== activeAnnotationId &&
+      clickAwayArmedIdRef.current !== activeAnnotationId
+    ) {
+      clickAwayArmedIdRef.current = null;
+    }
+    previousActiveAnnotationIdRef.current = activeAnnotationId;
+  }, [activeAnnotationId]);
+
   const handleManualCollapse = useCallback(
     (id: string) => {
+      if (clickAwayArmedIdRef.current === id) {
+        clickAwayArmedIdRef.current = null;
+      }
       clearRecentlyResolved(id);
       if (activeAnnotationId === id) onSetActive(null);
     },
     [activeAnnotationId, clearRecentlyResolved, onSetActive]
   );
 
+  const handleThreadActivate = useCallback(
+    (annotation: Annotation) => {
+      clickAwayArmedIdRef.current = annotation.id;
+      if (activeAnnotationId === annotation.id) {
+        if (annotation.status !== 'resolved') onSetActive(null);
+        return;
+      }
+      onSetActive(annotation.id);
+    },
+    [activeAnnotationId, onSetActive]
+  );
+
+  const handleProgrammaticSetActive = useCallback(
+    (id: string | null) => {
+      clickAwayArmedIdRef.current = null;
+      onSetActive(id);
+    },
+    [onSetActive]
+  );
+
   useEffect(() => {
-    if (tab !== 'all' || !activeAnnotationId) return;
-    const annotationId = activeAnnotationId;
-    const active = annotations.find((a) => a.id === annotationId);
-    if (active?.status !== 'resolved') return;
+    function handleClick(event: MouseEvent) {
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const highlightId = target
+        .closest('.annotation-highlight[data-annotation-id]')
+        ?.getAttribute('data-annotation-id');
+      if (highlightId) clickAwayArmedIdRef.current = highlightId;
+    }
 
     function handleMouseDown(event: MouseEvent) {
+      if (event.button !== 0) return;
       const target = event.target;
+      if (tab !== 'all' || !activeAnnotationId) return;
+      const annotationId = activeAnnotationId;
       if (
         target instanceof Element &&
         target.closest('.comment-thread')?.getAttribute('data-annotation-id') ===
           annotationId
+      ) {
+        clickAwayArmedIdRef.current = annotationId;
+        return;
+      }
+      const active = annotations.find((a) => a.id === annotationId);
+      if (
+        active?.status !== 'resolved' ||
+        clickAwayArmedIdRef.current !== annotationId
       ) {
         return;
       }
       handleManualCollapse(annotationId);
     }
 
+    document.addEventListener('click', handleClick);
     document.addEventListener('mousedown', handleMouseDown);
-    return () => document.removeEventListener('mousedown', handleMouseDown);
+    return () => {
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('mousedown', handleMouseDown);
+    };
   }, [tab, activeAnnotationId, annotations, handleManualCollapse]);
 
   // Sort by position in document
@@ -175,7 +232,7 @@ export function CommentSidebar({
           annotations={annotations}
           isUnread={isUnread}
           markViewed={markViewed}
-          onSetActive={onSetActive}
+          onSetActive={handleProgrammaticSetActive}
           onReply={onReply}
           onResolve={onResolve}
           onReopen={onReopen}
@@ -190,7 +247,7 @@ export function CommentSidebar({
             key={annotation.id}
             annotation={annotation}
             isActive={activeAnnotationId === annotation.id}
-            onActivate={() => onSetActive(activeAnnotationId === annotation.id ? null : annotation.id)}
+            onActivate={() => handleThreadActivate(annotation)}
             onReply={(text, kind) => onReply(annotation.id, text, kind)}
             onResolve={() => onResolve(annotation.id)}
             onReopen={() => onReopen(annotation.id)}
@@ -205,7 +262,7 @@ export function CommentSidebar({
             resolvedAnnotations={resolvedAnnotations}
             activeAnnotationId={activeAnnotationId}
             recentlyResolved={recentlyResolved}
-            onSetActive={onSetActive}
+            onThreadActivate={handleThreadActivate}
             onReply={onReply}
             onResolve={onResolve}
             onReopen={onReopen}
@@ -234,7 +291,7 @@ function ResolvedSection({
   resolvedAnnotations,
   activeAnnotationId,
   recentlyResolved,
-  onSetActive,
+  onThreadActivate,
   onReply,
   onResolve,
   onReopen,
@@ -246,7 +303,7 @@ function ResolvedSection({
   resolvedAnnotations: Annotation[];
   activeAnnotationId: string | null;
   recentlyResolved: Set<string>;
-  onSetActive: (id: string | null) => void;
+  onThreadActivate: (annotation: Annotation) => void;
   onReply: (annotationId: string, text: string, kind: import('@shared/types.js').CommentKind) => void;
   onResolve: (annotationId: string) => void;
   onReopen: (annotationId: string) => void;
@@ -301,11 +358,7 @@ function ResolvedSection({
           annotation={annotation}
           isActive={activeAnnotationId === annotation.id}
           forceExpanded={recentlyResolved.has(annotation.id)}
-          onActivate={() =>
-            activeAnnotationId === annotation.id
-              ? onManualCollapse(annotation.id)
-              : onSetActive(annotation.id)
-          }
+          onActivate={() => onThreadActivate(annotation)}
           onReply={(text, kind) => onReply(annotation.id, text, kind)}
           onResolve={() => onResolve(annotation.id)}
           onReopen={() => onReopen(annotation.id)}
