@@ -424,6 +424,53 @@ body {
   margin: 1.5em 0;
 }
 
+.markdown-viewer .footnote-ref {
+  font-size: 0.75em;
+  line-height: 0;
+  margin-left: 0.1em;
+  user-select: none;
+}
+
+.markdown-viewer .footnote-ref a,
+.markdown-viewer .footnote-backref {
+  text-decoration: none;
+}
+
+.markdown-viewer .footnote-ref a,
+.markdown-viewer .footnote-item {
+  scroll-margin-top: calc(var(--toolbar-height) + 16px);
+}
+
+.markdown-viewer .footnotes-sep {
+  margin-bottom: 0.75em;
+}
+
+.markdown-viewer .footnotes {
+  color: var(--text-secondary);
+  font-size: 0.9em;
+}
+
+.markdown-viewer .footnotes-list {
+  margin-bottom: 0;
+}
+
+.markdown-viewer .footnote-item {
+  padding-left: 0.2em;
+}
+
+.markdown-viewer .footnote-item p {
+  margin-bottom: 0.4em;
+}
+
+.markdown-viewer .footnote-item p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-viewer .footnote-backref {
+  margin-left: 0.25em;
+  user-select: none;
+}
+
 /* Mermaid diagrams */
 .mermaid-diagram {
   margin: 0.75em 0;

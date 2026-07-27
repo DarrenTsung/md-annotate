@@ -572,10 +572,22 @@ export function MarkdownViewer({
       const anchorLink = target.closest('a[href^="#"]') as HTMLAnchorElement | null;
       if (anchorLink) {
         e.preventDefault();
-        const id = decodeURIComponent(anchorLink.getAttribute('href')!.slice(1));
-        const heading = document.getElementById(id);
-        if (heading) {
-          heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const href = anchorLink.getAttribute('href')!;
+        const id = decodeURIComponent(href.slice(1));
+        const anchorTarget = document.getElementById(id);
+        if (anchorTarget) {
+          window.history.pushState(null, '', href);
+          anchorTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          const hadTabIndex = anchorTarget.hasAttribute('tabindex');
+          if (!hadTabIndex) anchorTarget.setAttribute('tabindex', '-1');
+          anchorTarget.focus({ preventScroll: true });
+          if (!hadTabIndex) {
+            anchorTarget.addEventListener(
+              'blur',
+              () => anchorTarget.removeAttribute('tabindex'),
+              { once: true }
+            );
+          }
         }
         return;
       }

@@ -21,6 +21,13 @@ export interface SourceOffset {
 }
 
 const CONTEXT_LENGTH = 30;
+const GENERATED_CONTROL_SELECTOR = '.footnote-ref, .footnote-backref';
+
+export interface SourceMapOptions {
+  footnoteReferenceLabels?: string[];
+  skipFootnoteDefinitionPrefix?: boolean;
+  codeBlock?: boolean;
+}
 
 /**
  * Find the nearest ancestor (or self) element that has data-source-start.
@@ -64,7 +71,32 @@ function getTextOffsetInElement(
   } catch {
     return 0;
   }
-  return range.toString().length;
+  return getRangeText(range).length;
+}
+
+function getRangeText(range: Range): string {
+  const contents = range.cloneContents();
+  contents
+    .querySelectorAll(GENERATED_CONTROL_SELECTOR)
+    .forEach((element) => element.remove());
+  return contents.textContent ?? '';
+}
+
+function isInsideGeneratedControl(node: Node): boolean {
+  return Boolean(findClosestElement(node, GENERATED_CONTROL_SELECTOR));
+}
+
+function sourceMapOptionsForElement(element: Element): SourceMapOptions {
+  return {
+    footnoteReferenceLabels: Array.from(
+      element.querySelectorAll('.footnote-ref[data-footnote-label]')
+    ).flatMap((reference) => {
+      const label = reference.getAttribute('data-footnote-label');
+      return label ? [label] : [];
+    }),
+    skipFootnoteDefinitionPrefix: Boolean(element.closest('.footnote-item')),
+    codeBlock: Boolean(element.closest('pre')),
+  };
 }
 
 /**
@@ -148,22 +180,188 @@ function fuzzyFindInSource(
  * stripping all markdown syntax that doesn't appear in rendered output.
  * Returns an array where map[renderedPos] = rawPos.
  */
-export function buildSourceMap(rawBlock: string): number[] {
+export function buildSourceMap(
+  rawBlock: string,
+  options: SourceMapOptions = {}
+): number[] {
   const map: number[] = [];
-  let i = 0;
   const len = rawBlock.length;
 
-  // Skip leading block-level prefix (not in rendered text)
-  // Order matters: check task lists before plain list markers
-  const prefixRe = /^(?:>\s*)?(?:\s*[-*+]\s(?:\[[ xX]\]\s)?|\s*\d+\.\s(?:\[[ xX]\]\s)?|#{1,6}\s)/;
-  const prefixMatch = rawBlock.match(prefixRe);
-  if (prefixMatch) i = prefixMatch[0].length;
+  function skipFootnotePrefix(position: number): number {
+    let next = position;
+    if (options.skipFootnoteDefinitionPrefix) {
+      const footnotePrefix = rawBlock
+        .slice(next)
+        .match(/^\[\^[^\]\s]+\]:[ \t]*/);
+      if (footnotePrefix) {
+        next += footnotePrefix[0].length;
+      } else {
+        const continuationIndent = rawBlock
+          .slice(next)
+          .match(/^(?: {4}|\t)/);
+        if (continuationIndent) next += continuationIndent[0].length;
+      }
+    }
+    return next;
+  }
+
+  function lineEnd(position: number): number {
+    const newline = rawBlock.indexOf('\n', position);
+    return newline === -1 ? len : newline;
+  }
+
+  function buildCodeBlockMap(): number[] {
+    type CodeContainer =
+      | { kind: 'blockquote' }
+      | { kind: 'list'; width: number };
+
+    function skipOpeningContainers(
+      position: number
+    ): { position: number; containers: CodeContainer[] } {
+      let next = position;
+      const containers: CodeContainer[] = [];
+      while (next < len) {
+        const blockquote = rawBlock.slice(next).match(/^ {0,3}>[ \t]?/);
+        if (blockquote) {
+          next += blockquote[0].length;
+          containers.push({ kind: 'blockquote' });
+          continue;
+        }
+
+        const list = rawBlock
+          .slice(next)
+          .match(/^(?: {0,3})(?:[-+*]|\d+[.)])[ \t]+/);
+        if (list) {
+          next += list[0].length;
+          containers.push({ kind: 'list', width: list[0].length });
+          continue;
+        }
+        break;
+      }
+      return { position: next, containers };
+    }
+
+    function skipContinuationContainers(
+      position: number,
+      containers: CodeContainer[]
+    ): number {
+      let next = position;
+      for (const container of containers) {
+        if (container.kind === 'blockquote') {
+          const blockquote = rawBlock.slice(next).match(/^ {0,3}>[ \t]?/);
+          if (blockquote) next += blockquote[0].length;
+          continue;
+        }
+
+        let remaining = container.width;
+        while (
+          remaining > 0 &&
+          (rawBlock[next] === ' ' || rawBlock[next] === '\t')
+        ) {
+          next++;
+          remaining--;
+        }
+      }
+      return next;
+    }
+
+    const codeMap: number[] = [];
+    const firstLine = skipOpeningContainers(skipFootnotePrefix(0));
+    const firstContentStart = firstLine.position;
+    const firstLineEnd = lineEnd(firstContentStart);
+    const openingFence = rawBlock
+      .slice(firstContentStart, firstLineEnd)
+      .match(/^( {0,3})(`{3,}|~{3,})/);
+    let position = 0;
+
+    if (openingFence) {
+      const fenceIndent = openingFence[1].length;
+      const fenceCharacter = openingFence[2][0];
+      const fenceLength = openingFence[2].length;
+      position = firstLineEnd < len ? firstLineEnd + 1 : len;
+
+      while (position < len) {
+        let contentStart = skipFootnotePrefix(position);
+        contentStart = skipContinuationContainers(
+          contentStart,
+          firstLine.containers
+        );
+        const contentEnd = lineEnd(contentStart);
+        const closingFence = rawBlock
+          .slice(contentStart, contentEnd)
+          .match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
+        if (
+          closingFence &&
+          closingFence[1][0] === fenceCharacter &&
+          closingFence[1].length >= fenceLength
+        ) {
+          break;
+        }
+
+        let remainingIndent = fenceIndent;
+        while (
+          remainingIndent > 0 &&
+          rawBlock[contentStart] === ' '
+        ) {
+          contentStart++;
+          remainingIndent--;
+        }
+        for (let sourceIndex = contentStart; sourceIndex < contentEnd; sourceIndex++) {
+          codeMap.push(sourceIndex);
+        }
+        if (contentEnd < len) codeMap.push(contentEnd);
+        position = contentEnd + 1;
+      }
+
+      return codeMap;
+    }
+
+    while (position < len) {
+      let contentStart = skipFootnotePrefix(position);
+      contentStart = skipContinuationContainers(
+        contentStart,
+        firstLine.containers
+      );
+      const codeIndent = rawBlock.slice(contentStart).match(/^(?: {4}|\t)/);
+      if (codeIndent) contentStart += codeIndent[0].length;
+      const contentEnd = lineEnd(contentStart);
+      for (let sourceIndex = contentStart; sourceIndex < contentEnd; sourceIndex++) {
+        codeMap.push(sourceIndex);
+      }
+      if (contentEnd < len) codeMap.push(contentEnd);
+      position = contentEnd + 1;
+    }
+
+    return codeMap;
+  }
+
+  if (options.codeBlock) return buildCodeBlockMap();
+
+  function skipLinePrefixes(position: number): number {
+    let next = skipFootnotePrefix(position);
+
+    while (next < len) {
+      const blockPrefix = rawBlock.slice(next).match(
+        /^(?:[ \t]*>[ \t]*|[ \t]*[-*+][ \t]+(?:\[[ xX]\][ \t]+)?|[ \t]*\d+[.)][ \t]+(?:\[[ xX]\][ \t]+)?|[ \t]{0,3}#{1,6}[ \t]+)/
+      );
+      if (!blockPrefix) break;
+      next += blockPrefix[0].length;
+    }
+    return next;
+  }
+
+  let i = skipLinePrefixes(0);
 
   while (i < len) {
     const ch = rawBlock[i];
 
     // Trailing newline (not in rendered text)
     if (ch === '\n' && i === len - 1) { i++; continue; }
+    if (ch === '\n') {
+      map.push(i);
+      i = skipLinePrefixes(i + 1);
+      continue;
+    }
 
     // Escape backslash: skip the backslash, keep the escaped char
     if (ch === '\\' && i + 1 < len && /[\\`*_{}[\]()#+\-.!~>|]/.test(rawBlock[i + 1])) {
@@ -183,6 +381,15 @@ export function buildSourceMap(rawBlock: string): number[] {
           i = closeParen + 1;
           continue;
         }
+      }
+    }
+
+    if (ch === '[' && rawBlock[i + 1] === '^') {
+      const closeBracket = rawBlock.indexOf(']', i + 2);
+      const label = rawBlock.slice(i + 2, closeBracket);
+      if (options.footnoteReferenceLabels?.includes(label)) {
+        i = closeBracket + 1;
+        continue;
       }
     }
 
@@ -266,10 +473,11 @@ function textOffsetToSourceOffset(
   textOffset: number,
   rawMarkdown: string,
   blockSourceStart: number,
-  blockSourceEnd: number
+  blockSourceEnd: number,
+  options: SourceMapOptions
 ): number {
   const rawBlock = rawMarkdown.slice(blockSourceStart, blockSourceEnd);
-  const posMap = buildSourceMap(rawBlock);
+  const posMap = buildSourceMap(rawBlock, options);
   if (textOffset < posMap.length) {
     return blockSourceStart + posMap[textOffset];
   }
@@ -287,7 +495,13 @@ export function selectionToSourceOffset(
   if (selection.rangeCount === 0) return null;
 
   const range = selection.getRangeAt(0);
-  const selectedText = selection.toString();
+  if (
+    isInsideGeneratedControl(range.startContainer) ||
+    isInsideGeneratedControl(range.endContainer)
+  ) {
+    return null;
+  }
+  const selectedText = getRangeText(range);
   if (!selectedText.trim()) return null;
 
   const startMermaidLabel = findClosestElement(
@@ -419,7 +633,8 @@ export function selectionToSourceOffset(
     startTextOffset,
     rawMarkdown,
     startBlockStart,
-    startBlockEnd
+    startBlockEnd,
+    sourceMapOptionsForElement(startEl)
   );
 
   const endTextOffset = getTextOffsetInElement(
@@ -437,7 +652,8 @@ export function selectionToSourceOffset(
         endTextOffset,
         rawMarkdown,
         endBlockStart,
-        endBlockEnd
+        endBlockEnd,
+        sourceMapOptionsForElement(effectiveEndEl)
       );
 
   // Use the mapped positions directly (already precise from the source map)

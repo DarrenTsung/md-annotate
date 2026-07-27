@@ -10,6 +10,7 @@
     "dev": "tsx bin/md-annotate.ts",
     "start": "tsx bin/md-annotate.ts",
     "test:launch-agent": "./scripts/test-launch-agent.sh",
+    "test:markdown": "node --import tsx --test tests/markdown.test.ts",
     "test:mermaid": "node --import tsx --test tests/mermaid-labels.test.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -20,6 +21,7 @@
     "express": "^4.21.2",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.0",
+    "markdown-it-footnote": "^4.0.0",
     "markdown-it-task-lists": "^2.1.1",
     "mermaid": "^11.13.0",
     "morphdom": "^2.7.8",

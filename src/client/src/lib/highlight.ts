@@ -290,7 +290,11 @@ function highlightTextInElement(
   // Skip text inside .action-buttons so highlights don't cover action buttons.
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      if (node.parentElement?.closest('.action-buttons')) {
+      if (
+        node.parentElement?.closest(
+          '.action-buttons, .footnote-ref, .footnote-backref'
+        )
+      ) {
         return NodeFilter.FILTER_REJECT;
       }
       // Skip text nodes that are direct children of table-structural
@@ -372,7 +376,20 @@ function highlightTextInElement(
       // raw markdown is available. Falls back to ratio for legacy data.
       if (rawMarkdown) {
         const rawBlock = rawMarkdown.slice(blockStartOffset, blockEnd);
-        const srcMap = buildSourceMap(rawBlock);
+        const srcMap = buildSourceMap(rawBlock, {
+          footnoteReferenceLabels: Array.from(
+            element.querySelectorAll(
+              '.footnote-ref[data-footnote-label]'
+            )
+          ).flatMap((reference) => {
+            const label = reference.getAttribute('data-footnote-label');
+            return label ? [label] : [];
+          }),
+          skipFootnoteDefinitionPrefix: Boolean(
+            element.closest('.footnote-item')
+          ),
+          codeBlock: Boolean(element.closest('pre')),
+        });
         // Reverse lookup: find the rendered text index for a raw offset
         const rawToText = (rawOff: number): number => {
           const relRaw = rawOff - blockStartOffset;

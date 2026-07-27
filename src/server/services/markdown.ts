@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import MarkdownIt from 'markdown-it';
+import footnote from 'markdown-it-footnote';
 import taskLists from 'markdown-it-task-lists';
 import type Token from 'markdown-it/lib/token.mjs';
 import hljs from 'highlight.js';
@@ -102,7 +103,56 @@ function getMd(): MarkdownIt {
       },
     });
     mdInstance.use(sourceOffsetPlugin);
+    mdInstance.use(footnote);
+    mdInstance.inline.ruler.disable('footnote_inline');
     mdInstance.use(taskLists, { enabled: false });
+
+    const defaultFootnoteRef = mdInstance.renderer.rules.footnote_ref;
+    if (defaultFootnoteRef) {
+      mdInstance.renderer.rules.footnote_ref = function (
+        tokens,
+        idx,
+        options,
+        env,
+        self
+      ) {
+        const html = defaultFootnoteRef(tokens, idx, options, env, self);
+        const number = Number(tokens[idx].meta.id) + 1;
+        return html
+          .replace(
+            '<sup class="footnote-ref"',
+            `<sup class="footnote-ref" data-footnote-label="${escapeAttr(
+              String(tokens[idx].meta.label)
+            )}"`
+          )
+          .replace('<a ', `<a aria-label="Footnote ${number}" `);
+      };
+    }
+
+    const defaultFootnoteAnchor = mdInstance.renderer.rules.footnote_anchor;
+    if (defaultFootnoteAnchor) {
+      mdInstance.renderer.rules.footnote_anchor = function (
+        tokens,
+        idx,
+        options,
+        env,
+        self
+      ) {
+        const html = defaultFootnoteAnchor(
+          tokens,
+          idx,
+          options,
+          env,
+          self
+        ).replace(/^ /, '');
+        const number = Number(tokens[idx].meta.id) + 1;
+        const reference = Number(tokens[idx].meta.subId) + 1;
+        return html.replace(
+          '<a ',
+          `<a aria-label="Back to footnote ${number} reference ${reference}" `
+        );
+      };
+    }
 
     // Add id slugs to headings for anchor links
     const defaultHeadingOpen = mdInstance.renderer.rules.heading_open ||
@@ -182,6 +232,7 @@ function getMd(): MarkdownIt {
 interface EmbedEnv {
   embedStyles?: string[];
   embedScripts?: string[];
+  docId?: string;
 }
 
 /** Block-level tags treated as embeddable interactive widgets (vs. inline HTML). */
@@ -260,7 +311,7 @@ function buildEmbedSrcdoc(styles: string[], scripts: string[], body: string): st
 
 export function renderMarkdown(source: string): string {
   const md = getMd();
-  const env: EmbedEnv = {};
+  const env: EmbedEnv = { docId: 'md-annotate:footnote' };
   const tokens = md.parse(source, env);
   classifyEmbeds(tokens, env);
   let html = md.renderer.render(tokens, md.options, env);
