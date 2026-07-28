@@ -12,6 +12,7 @@
     "test:launch-agent": "./scripts/test-launch-agent.sh",
     "test:markdown": "node --import tsx --test tests/markdown.test.ts",
     "test:mermaid": "node --import tsx --test tests/mermaid-labels.test.ts",
+    "test:resolved-threads": "node --import tsx --test tests/resolved-threads.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

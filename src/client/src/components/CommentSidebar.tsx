@@ -1,10 +1,18 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+} from 'react';
 import type { Annotation } from '@shared/types.js';
 import { CommentThread } from './CommentThread.js';
 import { FocusReview } from './FocusReview.js';
 import { useViewedThreads } from '../hooks/useViewedThreads.js';
-
-const RECENTLY_RESOLVED_MS = 5000;
+import {
+  applyResolvedThreadTransitions,
+  findResolvedThreadTransitions,
+} from '../lib/resolvedThreads.js';
 
 type SidebarTab = 'all' | 'review';
 
@@ -51,16 +59,13 @@ export function CommentSidebar({
   const unreadCount = annotations.filter(
     (a) => a.status !== 'deleted' && isUnread(a)
   ).length;
-  // Track recently resolved annotations so they stay expanded briefly
-  const [recentlyResolved, setRecentlyResolved] = useState<Set<string>>(new Set());
-  const prevStatusRef = useRef<Map<string, string>>(new Map());
-  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [expandedResolved, setExpandedResolved] = useState<Set<string>>(
+    new Set()
+  );
+  const prevStatusRef = useRef<Map<string, Annotation['status']>>(new Map());
 
-  const clearRecentlyResolved = useCallback((id: string) => {
-    const timer = timersRef.current.get(id);
-    if (timer) clearTimeout(timer);
-    timersRef.current.delete(id);
-    setRecentlyResolved((current) => {
+  const clearExpandedResolved = useCallback((id: string) => {
+    setExpandedResolved((current) => {
       if (!current.has(id)) return current;
       const next = new Set(current);
       next.delete(id);
@@ -68,41 +73,24 @@ export function CommentSidebar({
     });
   }, []);
 
-  useEffect(() => {
-    const prev = prevStatusRef.current;
-    const currentIds = new Set<string>();
-    for (const a of annotations) {
-      currentIds.add(a.id);
-      const wasOpen = prev.get(a.id) === 'open';
-      if (wasOpen && a.status === 'resolved') {
-        clearRecentlyResolved(a.id);
-        setRecentlyResolved((s) => new Set(s).add(a.id));
-        const timer = setTimeout(
-          () => clearRecentlyResolved(a.id),
-          RECENTLY_RESOLVED_MS
-        );
-        timersRef.current.set(a.id, timer);
-      } else if (prev.get(a.id) === 'resolved' && a.status !== 'resolved') {
-        clearRecentlyResolved(a.id);
-      }
-      prev.set(a.id, a.status);
+  useLayoutEffect(() => {
+    const transitions = findResolvedThreadTransitions(
+      prevStatusRef.current,
+      annotations
+    );
+    const armedId = clickAwayArmedIdRef.current;
+    if (
+      armedId &&
+      (transitions.newlyResolved.has(armedId) ||
+        transitions.noLongerResolved.has(armedId))
+    ) {
+      clickAwayArmedIdRef.current = null;
     }
-
-    for (const id of prev.keys()) {
-      if (currentIds.has(id)) continue;
-      clearRecentlyResolved(id);
-      prev.delete(id);
-    }
-  }, [annotations, clearRecentlyResolved]);
-
-  useEffect(
-    () => () => {
-      for (const timer of timersRef.current.values()) clearTimeout(timer);
-      timersRef.current.clear();
-      prevStatusRef.current.clear();
-    },
-    []
-  );
+    prevStatusRef.current = transitions.currentStatuses;
+    setExpandedResolved((current) =>
+      applyResolvedThreadTransitions(current, transitions)
+    );
+  }, [annotations]);
 
   useEffect(() => {
     if (
@@ -119,10 +107,10 @@ export function CommentSidebar({
       if (clickAwayArmedIdRef.current === id) {
         clickAwayArmedIdRef.current = null;
       }
-      clearRecentlyResolved(id);
+      clearExpandedResolved(id);
       if (activeAnnotationId === id) onSetActive(null);
     },
-    [activeAnnotationId, clearRecentlyResolved, onSetActive]
+    [activeAnnotationId, clearExpandedResolved, onSetActive]
   );
 
   const handleThreadActivate = useCallback(
@@ -261,7 +249,7 @@ export function CommentSidebar({
           <ResolvedSection
             resolvedAnnotations={resolvedAnnotations}
             activeAnnotationId={activeAnnotationId}
-            recentlyResolved={recentlyResolved}
+            expandedResolved={expandedResolved}
             onThreadActivate={handleThreadActivate}
             onReply={onReply}
             onResolve={onResolve}
@@ -290,7 +278,7 @@ export function CommentSidebar({
 function ResolvedSection({
   resolvedAnnotations,
   activeAnnotationId,
-  recentlyResolved,
+  expandedResolved,
   onThreadActivate,
   onReply,
   onResolve,
@@ -302,7 +290,7 @@ function ResolvedSection({
 }: {
   resolvedAnnotations: Annotation[];
   activeAnnotationId: string | null;
-  recentlyResolved: Set<string>;
+  expandedResolved: Set<string>;
   onThreadActivate: (annotation: Annotation) => void;
   onReply: (annotationId: string, text: string, kind: import('@shared/types.js').CommentKind) => void;
   onResolve: (annotationId: string) => void;
@@ -357,7 +345,7 @@ function ResolvedSection({
           key={annotation.id}
           annotation={annotation}
           isActive={activeAnnotationId === annotation.id}
-          forceExpanded={recentlyResolved.has(annotation.id)}
+          forceExpanded={expandedResolved.has(annotation.id)}
           onActivate={() => onThreadActivate(annotation)}
           onReply={(text, kind) => onReply(annotation.id, text, kind)}
           onResolve={() => onResolve(annotation.id)}
