@@ -505,6 +505,37 @@
   word-wrap: break-word;
 }
 
+.comment-text p {
+  margin: 0 0 0.75em;
+}
+
+.comment-text > :last-child {
+  margin-bottom: 0;
+}
+
+.comment-table-scroll {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.comment-text table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92em;
+}
+
+.comment-text th,
+.comment-text td {
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.comment-text th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+
 .comment-text code {
   background: var(--bg-secondary);
   padding: 0.15em 0.35em;
